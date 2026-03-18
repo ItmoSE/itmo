@@ -10,7 +10,7 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-main.o: main.cpp lexer.hpp parser.hpp ast.hpp
+main.o: main.cpp lexer.hpp parser.hpp ast.hpp analyzer.hpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 lexer.o: lexer.cpp lexer.hpp

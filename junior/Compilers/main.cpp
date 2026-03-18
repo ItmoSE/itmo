@@ -1,3 +1,4 @@
+#include "analyzer.hpp"
 #include "ast.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -46,6 +47,11 @@ int main(int argc, char **argv) {
     for (auto &st : prog) {
       st->dump(std::cout, 0);
     }
+
+    // 5) semantic analysis
+    std::cout << "\n=== ANALYSIS ===\n";
+    Analyzer az;
+    az.analyze(prog);
 
     return 0;
   } catch (const std::exception &e) {

@@ -9,3 +9,11 @@ while (current < limit) {
     }
     current = current + 1;
 }
+
+var x = 10;
+var y = 20;
+print x;
+{
+  var z = 5;
+}
+y = 7;

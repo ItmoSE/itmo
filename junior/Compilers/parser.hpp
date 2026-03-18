@@ -87,7 +87,8 @@ private:
     if (matchSym("="))
       init = parseExpression();
     consumeSym(";", "expected ';' after variable declaration");
-    return std::make_unique<VarStmt>(name.lexeme, std::move(init));
+    return std::make_unique<VarStmt>(
+        name.lexeme, SourceLoc{name.line, name.col}, std::move(init));
   }
 
   std::unique_ptr<Stmt> parseStatement() {
@@ -154,8 +155,10 @@ private:
 
       // assignment target must be identifier
       if (auto *id = dynamic_cast<IdentExpr *>(lhs.get())) {
-        std::string name = id->name; // copy! lhs will be destroyed
-        return std::make_unique<AssignExpr>(std::move(name), std::move(value));
+        std::string name = id->name;
+        SourceLoc loc = id->loc;
+        return std::make_unique<AssignExpr>(std::move(name), loc,
+                                            std::move(value));
       }
       errorHere("invalid assignment target");
     }
@@ -222,8 +225,9 @@ private:
       return std::make_unique<NumberExpr>(std::stoll(s));
     }
     if (cur().kind == TokenKind::Identifier) {
-      auto s = advance().lexeme;
-      return std::make_unique<IdentExpr>(std::move(s));
+      Token tok = advance();
+      return std::make_unique<IdentExpr>(tok.lexeme,
+                                         SourceLoc{tok.line, tok.col});
     }
     if (matchSym("(")) {
       auto e = parseExpression();

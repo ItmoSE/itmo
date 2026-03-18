@@ -11,6 +11,11 @@ inline void pad(std::ostream &os, int n) {
     os << ' ';
 }
 
+struct SourceLoc {
+  int line = 0;
+  int col = 0;
+};
+
 // ---------- Expr ----------
 struct Expr {
   virtual ~Expr() = default;
@@ -20,6 +25,7 @@ struct Expr {
 struct NumberExpr : Expr {
   long long value;
   explicit NumberExpr(long long v) : value(v) {}
+
   void dump(std::ostream &os, int indent) const override {
     pad(os, indent);
     os << "Number(" << value << ")\n";
@@ -28,10 +34,12 @@ struct NumberExpr : Expr {
 
 struct IdentExpr : Expr {
   std::string name;
-  explicit IdentExpr(std::string n) : name(std::move(n)) {}
+  SourceLoc loc;
+  explicit IdentExpr(std::string n, SourceLoc l) : name(std::move(n)), loc(l) {}
+
   void dump(std::ostream &os, int indent) const override {
     pad(os, indent);
-    os << "Ident(" << name << ")\n";
+    os << "Ident(" << name << ") @" << loc.line << ":" << loc.col << "\n";
   }
 };
 
@@ -40,6 +48,7 @@ struct UnaryExpr : Expr {
   std::unique_ptr<Expr> rhs;
   UnaryExpr(std::string o, std::unique_ptr<Expr> r)
       : op(std::move(o)), rhs(std::move(r)) {}
+
   void dump(std::ostream &os, int indent) const override {
     pad(os, indent);
     os << "Unary(" << op << ")\n";
@@ -52,6 +61,7 @@ struct BinaryExpr : Expr {
   std::unique_ptr<Expr> lhs, rhs;
   BinaryExpr(std::string o, std::unique_ptr<Expr> l, std::unique_ptr<Expr> r)
       : op(std::move(o)), lhs(std::move(l)), rhs(std::move(r)) {}
+
   void dump(std::ostream &os, int indent) const override {
     pad(os, indent);
     os << "Binary(" << op << ")\n";
@@ -63,12 +73,15 @@ struct BinaryExpr : Expr {
 // assignment only for IDENT = expr
 struct AssignExpr : Expr {
   std::string name;
+  SourceLoc loc; // location of assignment target
   std::unique_ptr<Expr> value;
-  AssignExpr(std::string n, std::unique_ptr<Expr> v)
-      : name(std::move(n)), value(std::move(v)) {}
+
+  AssignExpr(std::string n, SourceLoc l, std::unique_ptr<Expr> v)
+      : name(std::move(n)), loc(l), value(std::move(v)) {}
+
   void dump(std::ostream &os, int indent) const override {
     pad(os, indent);
-    os << "Assign(" << name << ")\n";
+    os << "Assign(" << name << ") @" << loc.line << ":" << loc.col << "\n";
     value->dump(os, indent + 2);
   }
 };
@@ -81,12 +94,15 @@ struct Stmt {
 
 struct VarStmt : Stmt {
   std::string name;
-  std::unique_ptr<Expr> init; // may be null
-  VarStmt(std::string n, std::unique_ptr<Expr> i)
-      : name(std::move(n)), init(std::move(i)) {}
+  SourceLoc loc; // location of declaration
+  std::unique_ptr<Expr> init;
+
+  VarStmt(std::string n, SourceLoc l, std::unique_ptr<Expr> i)
+      : name(std::move(n)), loc(l), init(std::move(i)) {}
+
   void dump(std::ostream &os, int indent) const override {
     pad(os, indent);
-    os << "Var(" << name << ")\n";
+    os << "Var(" << name << ") @" << loc.line << ":" << loc.col << "\n";
     if (init)
       init->dump(os, indent + 2);
     else {
