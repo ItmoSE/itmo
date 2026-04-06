@@ -1,0 +1,53 @@
+TRIANGLE
+p0 = (0.0, 0.0, 0.0)
+p1 = (2.0, 0.0, 0.0)
+p2 = (0.0, 2.0, 0.0)
+
+MATERIAL
+surface_color = (0.7, 0.7, 0.7)
+kd = 0.8
+ks = 0.3
+shininess = 20.0
+
+LIGHTS
+light1:
+  position = (1.0, 1.0, 3.0)
+  intensity = (8.0, 8.0, 8.0)
+  direction = (0.0, 0.0, -1.0)
+  power = 1.0
+
+light2:
+  position = (-1.0, 1.5, 2.0)
+  intensity = (4.0, 3.5, 3.5)
+  direction = (1.0, -0.2, -1.0)
+  power = 2.0
+
+TEST POINTS (local coordinates u, v)
+(0.05, 0.05)
+(0.10, 0.10)
+(0.20, 0.10)
+(0.30, 0.20)
+(0.40, 0.10)
+(0.20, 0.30)
+(0.10, 0.50)
+(0.25, 0.25)
+(0.35, 0.15)
+(0.15, 0.35)
+(0.45, 0.05)
+(0.05, 0.45)
+(0.50, 0.20)
+(0.20, 0.60)
+(0.30, 0.30)
+
+OBSERVER 1
+(1.0, 1.0, 4.0)
+
+EXPECTED:
+brightness is non-zero for many points
+
+OBSERVER 2
+(1.0, 1.0, -4.0)
+
+EXPECTED:
+brightness = (0, 0, 0) for all points,
+because observer looks at the dark side
