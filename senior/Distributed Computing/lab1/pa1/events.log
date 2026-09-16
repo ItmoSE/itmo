@@ -1,0 +1,40 @@
+Process 1 (pid 80799, parent 80798) has STARTED
+Process 2 (pid 80800, parent 80798) has STARTED
+Process 3 (pid 80801, parent 80798) has STARTED
+Process 4 (pid 80802, parent 80798) has STARTED
+Process 5 (pid 80803, parent 80798) has STARTED
+Process 6 (pid 80804, parent 80798) has STARTED
+Process 7 (pid 80805, parent 80798) has STARTED
+Process 8 (pid 80806, parent 80798) has STARTED
+Process 9 (pid 80807, parent 80798) has STARTED
+Process 10 (pid 80808, parent 80798) has STARTED
+Process 1 received all STARTED messages
+Process 3 received all STARTED messages
+Process 2 received all STARTED messages
+Process 4 received all STARTED messages
+Process 5 received all STARTED messages
+Process 7 received all STARTED messages
+Process 1 has DONE its work
+Process 6 received all STARTED messages
+Process 8 received all STARTED messages
+Process 3 has DONE its work
+Process 9 received all STARTED messages
+Process 2 has DONE its work
+Process 10 received all STARTED messages
+Process 4 has DONE its work
+Process 5 has DONE its work
+Process 7 has DONE its work
+Process 6 has DONE its work
+Process 8 has DONE its work
+Process 9 has DONE its work
+Process 10 has DONE its work
+Process 1 received all DONE messages
+Process 2 received all DONE messages
+Process 3 received all DONE messages
+Process 8 received all DONE messages
+Process 7 received all DONE messages
+Process 10 received all DONE messages
+Process 5 received all DONE messages
+Process 4 received all DONE messages
+Process 9 received all DONE messages
+Process 6 received all DONE messages
