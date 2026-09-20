@@ -15,11 +15,11 @@ typedef struct {
   int process_count;
 
   /*
-   * Указатель на первый элемент матрицы:
+   * Pointer to the first element of the matrix:
    *
    * element pipes[N][N];
    *
-   * pipes[from][to] хранится в памяти линейно.
+   * pipes[from][to] is stored linearly in memory.
    */
   element *pipes;
 } IpcContext;

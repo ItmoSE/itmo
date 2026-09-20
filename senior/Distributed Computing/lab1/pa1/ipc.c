@@ -7,11 +7,11 @@
 #include <unistd.h>
 
 /*
- * Матрица element pipes[N][N] лежит в памяти непрерывно.
+ * The element pipes[N][N] matrix is stored contiguously in memory.
  *
  * pipes[from][to]
  *
- * в линейном представлении находится по адресу:
+ * is located at the following offset in the linear representation:
  *
  *     from * N + to
  */
@@ -33,10 +33,10 @@ static int valid_context(const IpcContext *ctx) {
 }
 
 /*
- * Blocking read ровно len байт.
+ * Read exactly len bytes in blocking mode.
  *
- * read() не обязан вернуть столько байт, сколько мы попросили,
- * поэтому одного read(fd, buf, len) недостаточно.
+ * read() may return fewer bytes than requested, so a single
+ * read(fd, buf, len) call is not sufficient.
  */
 static int read_exact(int fd, void *buf, size_t len) {
   size_t received = 0;
@@ -52,7 +52,7 @@ static int read_exact(int fd, void *buf, size_t len) {
 
     if (rc == 0) {
       /*
-       * Все write ends этого pipe закрыты.
+       * All write ends of this pipe are closed.
        */
       errno = EPIPE;
       return 1;
@@ -100,7 +100,7 @@ int send(void *self, local_id dst, const Message *msg) {
   size_t message_len = sizeof(MessageHeader) + msg->s_header.s_payload_len;
 
   /*
-   * Message устроен в памяти так:
+   * Message is laid out in memory as follows:
    *
    * +----------------+
    * | MessageHeader  |
@@ -108,10 +108,9 @@ int send(void *self, local_id dst, const Message *msg) {
    * | payload        |
    * +----------------+
    *
-   * Поэтому можно отправить нужную часть Message
-   * одним write().
+   * This allows the required part of Message to be sent with one write().
    *
-   * Не отправляем весь MAX_PAYLOAD_LEN.
+   * Do not send the entire MAX_PAYLOAD_LEN buffer.
    */
   for (;;) {
     ssize_t rc = write(channel->write_fd, msg, message_len);
@@ -172,7 +171,7 @@ int receive(void *self, local_id from, Message *msg) {
   }
 
   /*
-   * Сначала читаем фиксированный header.
+   * Read the fixed-size header first.
    */
   if (read_exact(channel->read_fd, &msg->s_header, sizeof(MessageHeader)) !=
       0) {
@@ -180,7 +179,7 @@ int receive(void *self, local_id from, Message *msg) {
   }
 
   /*
-   * Теперь уже знаем размер payload.
+   * The payload size is now known.
    */
   if (msg->s_header.s_magic != MESSAGE_MAGIC) {
     errno = EINVAL;
@@ -204,12 +203,12 @@ int receive(void *self, local_id from, Message *msg) {
 }
 
 /*
- * Попытка получить сообщение без блокировки.
+ * Try to receive a message without blocking.
  *
  * return:
- *     0  сообщение получено
- *     1  сообщения сейчас нет
- *    -1  ошибка
+ *     0  message received
+ *     1  no message available
+ *    -1  error
  */
 static int try_receive(IpcContext *ctx, local_id from, Message *msg) {
   element *channel = get_channel(ctx, from, ctx->self_id);
@@ -222,7 +221,7 @@ static int try_receive(IpcContext *ctx, local_id from, Message *msg) {
   }
 
   /*
-   * Сохраняем текущие flags fd.
+   * Save the current fd flags.
    */
   int old_flags = fcntl(fd, F_GETFL);
 
@@ -241,9 +240,9 @@ static int try_receive(IpcContext *ctx, local_id from, Message *msg) {
   int saved_errno = 0;
 
   /*
-   * Сначала пытаемся прочитать header.
+   * Try to read the header first.
    *
-   * Если pipe пустой, non-blocking read даст EAGAIN.
+   * If the pipe is empty, a non-blocking read returns EAGAIN.
    */
   size_t received = 0;
   char *header_ptr = (char *)&msg->s_header;
@@ -270,15 +269,15 @@ static int try_receive(IpcContext *ctx, local_id from, Message *msg) {
 
       if (received == 0) {
         /*
-         * Ничего от этого process сейчас нет.
+         * No message is currently available from this process.
          */
         result = 1;
         goto restore_flags;
       }
 
       /*
-       * Уже начали читать message.
-       * Дожидаемся остатка.
+       * Message reading has already started.
+       * Wait for the remaining bytes.
        */
       continue;
     }
@@ -367,8 +366,7 @@ int receive_any(void *self, Message *msg) {
       element *channel = get_channel(ctx, (local_id)from, ctx->self_id);
 
       /*
-       * Например parent может не иметь
-       * некоторых read descriptors.
+       * The parent, for example, may not have some read descriptors.
        */
       if (channel->read_fd < 0)
         continue;
@@ -383,8 +381,8 @@ int receive_any(void *self, Message *msg) {
 
       /*
        * rc == 1:
-       * от этого process сейчас ничего нет,
-       * пробуем следующий.
+       * No message is currently available from this process.
+       * Try the next one.
        */
     }
   }
