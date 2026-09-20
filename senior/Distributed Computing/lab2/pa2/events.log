@@ -1,0 +1,30 @@
+0: process 1 (pid 114074, parent 114073) has STARTED with balance $ 1
+0: process 2 (pid 114075, parent 114073) has STARTED with balance $ 2
+0: process 3 (pid 114076, parent 114073) has STARTED with balance $ 3
+0: process 4 (pid 114077, parent 114073) has STARTED with balance $ 4
+0: process 5 (pid 114078, parent 114073) has STARTED with balance $ 5
+1: process 1 received all STARTED messages
+1: process 2 received all STARTED messages
+1: process 3 received all STARTED messages
+1: process 4 received all STARTED messages
+1: process 5 received all STARTED messages
+1: process 1 transferred $ 1 to process 2
+1: process 2 received $ 1 from process 1
+2: process 2 transferred $ 2 to process 3
+2: process 3 received $ 2 from process 2
+3: process 3 transferred $ 3 to process 4
+3: process 4 received $ 3 from process 3
+4: process 4 transferred $ 4 to process 5
+4: process 5 received $ 4 from process 4
+5: process 5 transferred $ 1 to process 1
+5: process 1 received $ 1 from process 5
+5: process 1 has DONE with balance $ 1
+5: process 2 has DONE with balance $ 1
+5: process 3 has DONE with balance $ 2
+5: process 4 has DONE with balance $ 3
+5: process 5 has DONE with balance $ 8
+5: process 1 received all DONE messages
+5: process 2 received all DONE messages
+5: process 3 received all DONE messages
+5: process 4 received all DONE messages
+5: process 5 received all DONE messages
