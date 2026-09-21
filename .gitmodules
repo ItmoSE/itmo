@@ -1,6 +1,6 @@
-[submodule "web/lab4/backend"]
-	path = web/lab4/backend
-	url = https://github.com/fefumo/PrecisionArc-backend
-[submodule "web/lab4/frontend"]
-	path = web/lab4/frontend
-	url = https://github.com/fefumo/PrecisionArc-frontend
+[submodule "sophomore/web/lab4/backend"]
+	path = sophomore/web/lab4/backend
+	url = https://github.com/ItmoSE/PrecisionArc-backend.git
+[submodule "sophomore/web/lab4/frontend"]
+	path = sophomore/web/lab4/frontend
+	url = https://github.com/ItmoSE/PrecisionArc-frontend.git
