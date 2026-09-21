@@ -4,3 +4,15 @@
 [submodule "sophomore/web/lab4/frontend"]
 	path = sophomore/web/lab4/frontend
 	url = https://github.com/ItmoSE/PrecisionArc-frontend.git
+[submodule "sophomore/low-level/assignment-1-io-library"]
+	path = sophomore/low-level/assignment-1-io-library
+	url = https://gitlab.se.ifmo.ru/fefumo/assignment-1-io-library.git
+[submodule "sophomore/low-level/assignment-2-dictionary"]
+	path = sophomore/low-level/assignment-2-dictionary
+	url = https://gitlab.se.ifmo.ru/fefumo/assignment-2-dictionary.git
+[submodule "sophomore/low-level/assignment-3-image-transform"]
+	path = sophomore/low-level/assignment-3-image-transform
+	url = https://gitlab.se.ifmo.ru/fefumo/assignment-3-image-transform.git
+[submodule "sophomore/low-level/assignment-4-memory-allocator"]
+	path = sophomore/low-level/assignment-4-memory-allocator
+	url = https://gitlab.se.ifmo.ru/fefumo/assignment-4-memory-allocator.git
