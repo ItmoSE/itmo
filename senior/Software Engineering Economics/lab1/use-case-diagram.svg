@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
+  <style>
+    text { font-family: Arial, sans-serif; fill: #172033; }
+    .title { font-size: 28px; font-weight: 700; }
+    .label { font-size: 20px; text-anchor: middle; }
+    .actor { font-size: 20px; text-anchor: middle; font-weight: 600; }
+    .boundary { fill: #f8fafc; stroke: #334155; stroke-width: 3; }
+    .public { fill: #eaf4ff; stroke: #2563eb; stroke-width: 2.5; }
+    .admin { fill: #f3eefe; stroke: #7c3aed; stroke-width: 2.5; }
+    .line { stroke: #64748b; stroke-width: 2; fill: none; }
+    .stick { stroke: #172033; stroke-width: 4; fill: none; stroke-linecap: round; }
+  </style>
+
+  <rect class="boundary" x="235" y="55" width="730" height="1390" rx="12"/>
+  <text class="title" x="600" y="95" text-anchor="middle">Сайт «ИТ Гильдия»</text>
+  <line x1="255" y1="820" x2="945" y2="820" stroke="#94a3b8" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="270" y="135" font-family="Arial" font-size="22" font-weight="700" fill="#2563eb">Публичная часть</text>
+  <text x="270" y="860" font-family="Arial" font-size="22" font-weight="700" fill="#7c3aed">CMS</text>
+
+  <!-- Associations are drawn before use cases so their ends remain hidden. -->
+  <path class="line" d="M110 350 L390 195 M110 350 L390 310 M110 350 L390 425 M110 350 L390 540 M110 350 L390 655 M110 350 L390 770"/>
+  <path class="line" d="M110 675 L810 195 M110 675 L810 310"/>
+  <path class="line" d="M110 1050 L390 920 M110 1050 L390 1035 M110 1050 L390 1150 M110 1050 L390 1265 M110 1050 L390 1380"/>
+  <path class="line" d="M1090 305 L810 425 M1090 305 L810 540"/>
+  <path class="line" d="M1090 655 L810 655"/>
+  <path class="line" d="M1090 1050 L810 770"/>
+
+  <!-- Public use cases. -->
+  <ellipse class="public" cx="480" cy="195" rx="190" ry="45"/>
+  <text class="label" x="480" y="190"><tspan x="480">Просматривать русские</tspan><tspan x="480" dy="25">материалы</tspan></text>
+
+  <ellipse class="public" cx="480" cy="310" rx="190" ry="45"/>
+  <text class="label" x="480" y="305"><tspan x="480">Фильтровать и загружать</tspan><tspan x="480" dy="25">элементы списков</tspan></text>
+
+  <ellipse class="public" cx="480" cy="425" rx="190" ry="45"/>
+  <text class="label" x="480" y="432">Искать материалы</text>
+
+  <ellipse class="public" cx="480" cy="540" rx="190" ry="45"/>
+  <text class="label" x="480" y="547">Скачивать документы</text>
+
+  <ellipse class="public" cx="480" cy="655" rx="190" ry="45"/>
+  <text class="label" x="480" y="650"><tspan x="480">Отправлять заявки, вопросы</tspan><tspan x="480" dy="25">и запросы презентаций</tspan></text>
+
+  <ellipse class="public" cx="480" cy="770" rx="190" ry="45"/>
+  <text class="label" x="480" y="765"><tspan x="480">Управлять согласием</tspan><tspan x="480" dy="25">на cookie</tspan></text>
+
+  <ellipse class="public" cx="780" cy="195" rx="145" ry="45"/>
+  <text class="label" x="780" y="190"><tspan x="780">Просматривать</tspan><tspan x="780" dy="25">вакансии</tspan></text>
+
+  <ellipse class="public" cx="780" cy="310" rx="145" ry="45"/>
+  <text class="label" x="780" y="317">Отправлять резюме</text>
+
+  <ellipse class="public" cx="780" cy="425" rx="145" ry="45"/>
+  <text class="label" x="780" y="420"><tspan x="780">Передавать уведомления</tspan><tspan x="780" dy="25">ответственному</tspan></text>
+
+  <ellipse class="public" cx="780" cy="540" rx="145" ry="45"/>
+  <text class="label" x="780" y="547">Проверять антиспам</text>
+
+  <ellipse class="public" cx="780" cy="655" rx="145" ry="45"/>
+  <text class="label" x="780" y="650"><tspan x="780">Просматривать английский</tspan><tspan x="780" dy="25">лендинг и отправлять форму</tspan></text>
+
+  <ellipse class="public" cx="780" cy="770" rx="145" ry="45"/>
+  <text class="label" x="780" y="765"><tspan x="780">Получать sitemap и</tspan><tspan x="780" dy="25">индексируемые страницы</tspan></text>
+
+  <!-- Administrative use cases. -->
+  <ellipse class="admin" cx="480" cy="920" rx="190" ry="45"/>
+  <text class="label" x="480" y="927">Входить в CMS</text>
+
+  <ellipse class="admin" cx="480" cy="1035" rx="190" ry="45"/>
+  <text class="label" x="480" y="1030"><tspan x="480">Управлять продуктами</tspan><tspan x="480" dy="25">и услугами</tspan></text>
+
+  <ellipse class="admin" cx="480" cy="1150" rx="190" ry="45"/>
+  <text class="label" x="480" y="1145"><tspan x="480">Управлять публикациями,</tspan><tspan x="480" dy="25">FAQ, терминами и тегами</tspan></text>
+
+  <ellipse class="admin" cx="480" cy="1265" rx="190" ry="45"/>
+  <text class="label" x="480" y="1260"><tspan x="480">Управлять страницами,</tspan><tspan x="480" dy="25">кейсами и вакансиями</tspan></text>
+
+  <ellipse class="admin" cx="480" cy="1380" rx="190" ry="45"/>
+  <text class="label" x="480" y="1375"><tspan x="480">Управлять английской</tspan><tspan x="480" dy="25">версией</tspan></text>
+
+  <ellipse class="admin" cx="780" cy="920" rx="145" ry="45"/>
+  <text class="label" x="780" y="915"><tspan x="780">Управлять медиа</tspan><tspan x="780" dy="25">и документами</tspan></text>
+
+  <ellipse class="admin" cx="780" cy="1035" rx="145" ry="45"/>
+  <text class="label" x="780" y="1030"><tspan x="780">Управлять меню</tspan><tspan x="780" dy="25">и настройками</tspan></text>
+
+  <ellipse class="admin" cx="780" cy="1150" rx="145" ry="45"/>
+  <text class="label" x="780" y="1145"><tspan x="780">Обрабатывать обращения</tspan><tspan x="780" dy="25">и резюме</tspan></text>
+
+  <ellipse class="admin" cx="780" cy="1265" rx="145" ry="45"/>
+  <text class="label" x="780" y="1260"><tspan x="780">Просматривать журнал</tspan><tspan x="780" dy="25">действий</tspan></text>
+
+  <!-- Actors. -->
+  <g transform="translate(110 275)">
+    <circle class="stick" cx="0" cy="0" r="25"/><path class="stick" d="M0 25 V105 M-45 55 H45 M0 105 L-40 165 M0 105 L40 165"/>
+    <text class="actor" x="0" y="200">Посетитель</text>
+  </g>
+  <g transform="translate(110 600)">
+    <circle class="stick" cx="0" cy="0" r="25"/><path class="stick" d="M0 25 V105 M-45 55 H45 M0 105 L-40 165 M0 105 L40 165"/>
+    <text class="actor" x="0" y="200">Соискатель</text>
+  </g>
+  <g transform="translate(110 975)">
+    <circle class="stick" cx="0" cy="0" r="25"/><path class="stick" d="M0 25 V105 M-45 55 H45 M0 105 L-40 165 M0 105 L40 165"/>
+    <text class="actor" x="0" y="200"><tspan x="0">Администратор</tspan><tspan x="0" dy="25">контента</tspan></text>
+  </g>
+
+  <g transform="translate(1090 230)">
+    <circle class="stick" cx="0" cy="0" r="25"/><path class="stick" d="M0 25 V105 M-45 55 H45 M0 105 L-40 165 M0 105 L40 165"/>
+    <text class="actor" x="0" y="200"><tspan x="0">Почтовый сервис и</tspan><tspan x="0" dy="25">антиспам</tspan></text>
+  </g>
+  <g transform="translate(1090 580)">
+    <circle class="stick" cx="0" cy="0" r="25"/><path class="stick" d="M0 25 V105 M-45 55 H45 M0 105 L-40 165 M0 105 L40 165"/>
+    <text class="actor" x="0" y="200"><tspan x="0">Посетитель</tspan><tspan x="0" dy="25">английской версии</tspan></text>
+  </g>
+  <g transform="translate(1090 975)">
+    <circle class="stick" cx="0" cy="0" r="25"/><path class="stick" d="M0 25 V105 M-45 55 H45 M0 105 L-40 165 M0 105 L40 165"/>
+    <text class="actor" x="0" y="200"><tspan x="0">Поисковый</tspan><tspan x="0" dy="25">робот</tspan></text>
+  </g>
+</svg>
