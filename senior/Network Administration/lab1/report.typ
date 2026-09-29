@@ -6,6 +6,18 @@
 #set text(size: 10pt)
 #set par(justify: true, leading: 0.7em)
 
+// Единое оформление листингов. Для блоков с языком bash и dockerfile Typst
+// выполняет встроенную подсветку синтаксиса.
+#let terminal(body) = block(
+  width: 100%,
+  fill: rgb("e1e5ea"),
+  stroke: (left: 2pt + rgb("66788a")),
+  inset: (x: 9pt, y: 7pt),
+  radius: 3pt,
+  breakable: true,
+)[#body]
+#show raw.where(block: true): set text(size: 8pt)
+
 #v(1.6cm)
 
 #align(center)[
@@ -21,11 +33,13 @@
 #align(center)[
   #text(weight: "bold")[Отчёт]
   #linebreak()
-  #text(weight: "bold")[По лабораторной работе N1]
+  #text(weight: "bold")[По лабораторной работе N2]
   #linebreak()
   по дисциплине Администрирование систем и сетей
   #linebreak()
   #text(weight: "bold")[Вариант: -]
+  #linebreak()
+  #text(weight: "bold")[Желаемая оценка: 4]
 ]
 
 #v(6.9cm)
@@ -70,7 +84,7 @@
 
 Виртуальные линии между маршрутизаторами созданы как пары `veth`. Каждый конец пары перенесен в network namespace соответствующего контейнера и переименован в `eth1` или `eth2`.
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
   # пример создания одного виртуального линка R1-R2
   ip link add r1-r2 type veth peer name r2-r1
@@ -80,6 +94,44 @@
 ]
 
 Такая реализация позволяет работать с независимыми интерфейсами и таблицами маршрутизации каждого устройства, при этом все контейнеры используют одно ядро Linux хоста.
+
+== Воспроизводимые конечные состояния
+
+Для конечных состояний двух частей подготовлены разные образы и entrypoint-скрипты:
+
+#table(
+  columns: (1fr, 1.6fr, 2.4fr),
+  inset: 5pt,
+  stroke: 0.5pt,
+  [*Часть*], [*Образ и конфигурация*], [*Скрипт запуска*],
+  [1], [`Dockerfile.part1`, `router-part1-entrypoint.sh`], [`launch-part1.sh` создаёт `na-part1-r1`, `na-part1-r2`, `na-part1-r3`],
+  [2], [`Dockerfile.part2`, `router-part2-entrypoint.sh`], [`launch-part2.sh` создаёт `na-part2-r1`, `na-part2-r2`, `na-part2-r3`],
+)
+
+Docker-образ не может сам хранить veth-пары и таблицы конкретного network namespace: эти объекты существуют только во время работы контейнеров. Поэтому entrypoint назначает адреса и маршруты, а launch-скрипт создаёт три контейнера, переносит шесть концов veth в нужные namespaces и ожидает готовности протоколов.
+
+#terminal[
+  ```bash
+  # Воспроизвести конец первой части со статическими маршрутами
+  root@host:/lab1# ./launch-part1.sh
+
+  # Проверить таблицу и связность
+  root@host:/lab1# docker exec na-part1-r1 ip route show
+  root@host:/lab1# docker exec na-part1-r1 \
+      ping -c 3 -I 10.0.1.1 10.0.1.2
+
+  # Воспроизвести конец второй части с OSPF
+  root@host:/lab1# ./launch-part2.sh
+
+  # Проверить соседства и выбранный путь
+  root@host:/lab1# docker exec na-part2-r1 \
+      vtysh -c "show ip ospf neighbor"
+  root@host:/lab1# docker exec na-part2-r1 \
+      vtysh -c "show ip route 10.0.1.2/32"
+  ```
+]
+
+Имена контейнеров и veth-пар различаются, поэтому оба конечных стенда могут работать одновременно. На проверенном стенде первой части R1 достигал loopback R2 через default route; на стенде второй части оба соседа R1 находились в `Full`, а маршрут `10.0.1.2/32` с cost 20 проходил через R3 (`10.0.13.3`).
 
 = Реализованная топология
 
@@ -96,7 +148,7 @@
 
 Настройка адресов выполнялась следующими командами:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
   # R1
   ip addr add 10.0.12.1/24 dev eth1
@@ -112,33 +164,62 @@
   ```
 ]
 
-После назначения адресов Linux автоматически добавил маршруты к непосредственно подключенным сетям. Например, на R1:
+Сразу после назначения адресов была выведена краткая сводка интерфейсов и обе таблицы, в которые ядро добавляет связанные с адресом маршруты:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
+#terminal[
+  ```bash
+  root@R1:/# ip -br addr
+  lo               UNKNOWN        127.0.0.1/8 ::1/128
+  eth1@if9         UP             10.0.12.1/24 fe80::bc57:9aff:fecd:7eb8/64
+  eth2@if11        UP             10.0.13.1/24 fe80::8888:9ff:fe06:af62/64
+
+  root@R1:/# ip route show
   10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.1
   10.0.13.0/24 dev eth2 proto kernel scope link src 10.0.13.1
+
+  root@R1:/# ip route show table local
+  local 10.0.12.1 dev eth1 proto kernel scope host src 10.0.12.1
+  broadcast 10.0.12.255 dev eth1 proto kernel scope link src 10.0.12.1
+  local 10.0.13.1 dev eth2 proto kernel scope host src 10.0.13.1
+  broadcast 10.0.13.255 dev eth2 proto kernel scope link src 10.0.13.1
   ```
 ]
 
-Связность проверялась по одному разу для каждого физического сегмента. Например, для линии R1--R2 непосредственно после настройки адресов:
+Аналогичные Huawei «три прямых маршрута» в Linux распределены между таблицами: префикс подключенной сети находится в `main`, а локальный `/32` и broadcast-адрес — в `local`. Поля `proto kernel`, `scope` и `src`, а также момент создания этих записей подробно разобраны в справочном разделе.
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ping -c 2 -I 10.0.12.1 10.0.12.2
-  64 bytes from 10.0.12.2: icmp_seq=1 ttl=64 time=0.061 ms
-  64 bytes from 10.0.12.2: icmp_seq=2 ttl=64 time=0.059 ms
-  2 packets transmitted, 2 received, 0% packet loss
+Связность непосредственно подключенных сегментов проверялась до настройки маршрутов к loopback. Флаг `-c 3` ограничивает проверку тремя запросами; без него Linux `ping` работал бы до прерывания сочетанием Ctrl+C.
+
+#terminal[
+  ```bash
+  root@R1:/# ping -c 3 10.0.12.2
+  PING 10.0.12.2 (10.0.12.2) 56(84) bytes of data.
+  64 bytes from 10.0.12.2: icmp_seq=1 ttl=64 time=0.052 ms
+  64 bytes from 10.0.12.2: icmp_seq=2 ttl=64 time=0.040 ms
+  64 bytes from 10.0.12.2: icmp_seq=3 ttl=64 time=0.098 ms
+
+  --- 10.0.12.2 ping statistics ---
+  3 packets transmitted, 3 received, 0% packet loss, time 2085ms
+  rtt min/avg/max/mdev = 0.040/0.063/0.098/0.025 ms
+
+  root@R1:/# ping -c 3 10.0.13.3
+  PING 10.0.13.3 (10.0.13.3) 56(84) bytes of data.
+  64 bytes from 10.0.13.3: icmp_seq=1 ttl=64 time=0.058 ms
+  64 bytes from 10.0.13.3: icmp_seq=2 ttl=64 time=0.037 ms
+  64 bytes from 10.0.13.3: icmp_seq=3 ttl=64 time=0.035 ms
+
+  --- 10.0.13.3 ping statistics ---
+  3 packets transmitted, 3 received, 0% packet loss, time 2041ms
+  rtt min/avg/max/mdev = 0.035/0.043/0.058/0.010 ms
   ```
 ]
 
-Аналогичная проверка двух остальных непосредственно подключенных сетей также дала 0 % потерь. Повторять одинаковый вывод для каждой линии в отчете нецелесообразно: эта проверка подтверждает только адресацию и состояние канального соединения, но еще не работу статических маршрутов к loopback-адресам.
+Полностью приведена одна однотипная проверка; для второго физического сегмента оставлена итоговая статистика. На этом этапе она подтверждает только исправность veth-линий и адресацию соседей.
 
 == Loopback-интерфейсы
 
 В Linux использован уже существующий интерфейс `lo`, которому назначены дополнительные адреса:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
   # R1
   ip addr add 10.0.1.1/32 dev lo
@@ -149,21 +230,36 @@
   ```
 ]
 
-Собственный loopback-адрес помещается Linux в локальную таблицу маршрутизации. Например, на R1 диагностическая команда `ip route show table local` показала:
+Собственный loopback-адрес помещается Linux в локальную таблицу маршрутизации. После его создания удалённый loopback всё ещё недоступен:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
+#terminal[
+  ```bash
+  root@R1:/# ip -br addr show lo
+  lo               UNKNOWN        127.0.0.1/8 10.0.1.1/32 ::1/128
+
+  root@R1:/# ip route show table local 10.0.1.1/32
   local 10.0.1.1 dev lo proto kernel scope host src 10.0.1.1
+
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  RTNETLINK answers: Network is unreachable
+
+  root@R1:/# ping -c 3 -I 10.0.1.1 10.0.1.2
+  PING 10.0.1.2 (10.0.1.2) from 10.0.1.1 : 56(84) bytes of data.
+
+  --- 10.0.1.2 ping statistics ---
+  3 packets transmitted, 0 received, 100% packet loss, time 2041ms
   ```
 ]
+
+Флаг `-I 10.0.1.1` выбирает loopback как исходный адрес ICMP-пакетов и является аналогом Huawei `ping -a`. Он нужен не для оформления: без него Linux выбрал бы адрес выходного физического интерфейса, и опыт проверял бы другой обратный маршрут.
 
 = Статическая маршрутизация
 
 == Основные маршруты между loopback-интерфейсами
 
-Для достижения loopback-адресов соседних маршрутизаторов были добавлены статические маршруты:
+Полный план статических маршрутов приведён ниже, однако команды выполнялись поэтапно, чтобы наблюдать изменение таблиц:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
   # R1
   ip route add 10.0.1.2/32 via 10.0.12.2
@@ -179,136 +275,198 @@
   ```
 ]
 
-Проверка R1--R2 проводилась поэтапно. Сначала маршрут был добавлен только на R1. Команда `ip route get` подтверждает, что R1 уже умеет отправить пакет к R2, однако `ping` не получает ни одного ответа:
+Проверка R1--R2 проводилась поэтапно. Сначала была выполнена только первая команда на R1:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ip route get 10.0.1.2 from 10.0.1.1
-  10.0.1.2 from 10.0.1.1 via 10.0.12.2 dev eth1
+#terminal[
+  ```bash
+  root@R1:/# ip route add 10.0.1.2/32 via 10.0.12.2
 
-  R1# ping -c 3 -W 1 -I 10.0.1.1 10.0.1.2
-  3 packets transmitted, 0 received, 100% packet loss
+  root@R1:/# ip route show
+  10.0.1.2 via 10.0.12.2 dev eth1
+  10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.1
+  10.0.13.0/24 dev eth2 proto kernel scope link src 10.0.13.1
 
-  R2# ip route get 10.0.1.1 from 10.0.1.2
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  10.0.1.2 from 10.0.1.1 via 10.0.12.2 dev eth1 uid 0
+      cache
+
+  root@R1:/# ping -c 3 -I 10.0.1.1 10.0.1.2
+  PING 10.0.1.2 (10.0.1.2) from 10.0.1.1 : 56(84) bytes of data.
+
+  --- 10.0.1.2 ping statistics ---
+  3 packets transmitted, 0 received, 100% packet loss, time 2039ms
+
+  root@R2:/# ip route get 10.0.1.1 from 10.0.1.2
   RTNETLINK answers: Network is unreachable
   ```
 ]
 
-Причина не в маршруте запроса: echo request доходит до R2, но R2 не знает, куда отправить echo reply с назначением `10.0.1.1`. После добавления на R2 обратного маршрута `ip route add 10.0.1.1/32 via 10.0.12.1` повторная проверка сразу стала успешной:
+`ip route get` моделирует выбор маршрута для одного пакета, не отправляя его. Параметр `from` задаёт адрес источника для этого выбора. R1 уже выбирает `10.0.12.2`, но R2 не имеет маршрута к источнику `10.0.1.1`, поэтому ICMP echo reply вернуть невозможно. Затем отдельно был добавлен обратный маршрут и сразу выведены обе таблицы:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ping -c 3 -W 1 -I 10.0.1.1 10.0.1.2
-  64 bytes from 10.0.1.2: icmp_seq=1 ttl=64 time=0.201 ms
-  64 bytes from 10.0.1.2: icmp_seq=2 ttl=64 time=0.049 ms
-  64 bytes from 10.0.1.2: icmp_seq=3 ttl=64 time=0.046 ms
-  3 packets transmitted, 3 received, 0% packet loss
+#terminal[
+  ```bash
+  root@R2:/# ip route add 10.0.1.1/32 via 10.0.12.1
+
+  root@R1:/# ip route show
+  10.0.1.2 via 10.0.12.2 dev eth1
+  10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.1
+  10.0.13.0/24 dev eth2 proto kernel scope link src 10.0.13.1
+
+  root@R2:/# ip route show
+  10.0.1.1 via 10.0.12.1 dev eth1
+  10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.2
+  10.0.23.0/24 dev eth2 proto kernel scope link src 10.0.23.2
+
+  root@R1:/# ping -c 3 -I 10.0.1.1 10.0.1.2
+  PING 10.0.1.2 (10.0.1.2) from 10.0.1.1 : 56(84) bytes of data.
+  64 bytes from 10.0.1.2: icmp_seq=1 ttl=64 time=0.072 ms
+  64 bytes from 10.0.1.2: icmp_seq=2 ttl=64 time=0.037 ms
+  64 bytes from 10.0.1.2: icmp_seq=3 ttl=64 time=0.066 ms
+
+  --- 10.0.1.2 ping statistics ---
+  3 packets transmitted, 3 received, 0% packet loss, time 2033ms
+  rtt min/avg/max/mdev = 0.037/0.058/0.072/0.015 ms
   ```
 ]
 
-Таким образом, для двустороннего обмена нужны маршрут к адресу назначения и обратный маршрут к адресу источника. После симметричной настройки пар R1--R3 и R2--R3 loopback-интерфейсы всех трех устройств стали взаимно достижимы.
+Успешный двусторонний обмен требует пути к назначению и пути обратно к источнику. После добавления оставшихся маршрутов таблицы стали следующими:
+
+#terminal[
+  ```bash
+  root@R1:/# ip route show
+  10.0.1.2 via 10.0.12.2 dev eth1
+  10.0.1.3 via 10.0.13.3 dev eth2
+  10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.1
+  10.0.13.0/24 dev eth2 proto kernel scope link src 10.0.13.1
+
+  root@R2:/# ip route show
+  10.0.1.1 via 10.0.12.1 dev eth1
+  10.0.1.3 via 10.0.23.3 dev eth2
+  10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.2
+  10.0.23.0/24 dev eth2 proto kernel scope link src 10.0.23.2
+
+  root@R3:/# ip route show
+  10.0.1.1 via 10.0.13.1 dev eth1
+  10.0.1.2 via 10.0.23.2 dev eth2
+  10.0.13.0/24 dev eth1 proto kernel scope link src 10.0.13.3
+  10.0.23.0/24 dev eth2 proto kernel scope link src 10.0.23.3
+  ```
+]
+
+Контрольные `ping` R1->R3 и R2->R3 с соответствующими loopback-источниками дали по три ответа и 0 % потерь.
 
 #table(
   columns: (1.3fr, 1fr, 1fr),
   inset: 5pt,
   stroke: 0.5pt,
   [*Проверка*], [*Результат*], [*Назначение*],
-  [R1 `10.0.1.1` → R2 `10.0.1.2`], [0 % потерь], [проверка маршрутов R1↔R2],
-  [R1 `10.0.1.1` → R3 `10.0.1.3`], [0 % потерь], [проверка маршрутов R1↔R3],
-  [R2 `10.0.1.2` → R3 `10.0.1.3`], [0 % потерь], [проверка маршрутов R2↔R3],
+  [R1 `10.0.1.1` -> R2 `10.0.1.2`], [0 % потерь], [проверка маршрутов R1<->R2],
+  [R1 `10.0.1.1` -> R3 `10.0.1.3`], [0 % потерь], [проверка маршрутов R1<->R3],
+  [R2 `10.0.1.2` -> R3 `10.0.1.3`], [0 % потерь], [проверка маршрутов R2<->R3],
 )
 
 = Резервный маршрут и отказ линии
 
-Для направления R1↔R2 был создан резервный путь через R3. В исходном оборудовании Huawei для выбора резервного маршрута используется параметр `preference`; в Linux аналогичный выбор среди статических маршрутов был воспроизведен с помощью `metric` — маршрут с меньшим значением выбирается первым.
+Для направления R1<->R2 был создан резервный путь через R3. В исходном оборудовании Huawei для выбора резервного маршрута используется параметр `preference`; в Linux аналогичный выбор среди статических маршрутов был воспроизведен с помощью `metric` — маршрут с меньшим значением выбирается первым.
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
-  # основной путь
-  ip route add 10.0.1.2/32 via 10.0.12.2 metric 60   # R1
-  ip route add 10.0.1.1/32 via 10.0.12.1 metric 60   # R2
+  # R1: заменить прежний маршрут парой с явными метриками
+  root@R1:/# ip route del 10.0.1.2/32 via 10.0.12.2
+  root@R1:/# ip route add 10.0.1.2/32 via 10.0.12.2 metric 60
+  root@R1:/# ip route add 10.0.1.2/32 via 10.0.13.3 metric 100
 
-  # резерв через R3
-  ip route add 10.0.1.2/32 via 10.0.13.3 metric 100  # R1
-  ip route add 10.0.1.1/32 via 10.0.23.3 metric 100  # R2
+  # R2: симметричная настройка обратного направления
+  root@R2:/# ip route del 10.0.1.1/32 via 10.0.12.1
+  root@R2:/# ip route add 10.0.1.1/32 via 10.0.12.1 metric 60
+  root@R2:/# ip route add 10.0.1.1/32 via 10.0.23.3 metric 100
   ```
 ]
 
-До отказа `ip route get` на R1 выбирал прямой next hop, а ответ от соседнего loopback приходил с TTL 64:
+После настройки в таблице одновременно видны основной и резервный маршруты. `metric 60` и `metric 100` различают записи с одинаковым префиксом; при прочих равных используется меньшее значение:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ip route get 10.0.1.2 from 10.0.1.1
-  10.0.1.2 from 10.0.1.1 via 10.0.12.2 dev eth1
+#terminal[
+  ```bash
+  root@R1:/# ip route show 10.0.1.2/32
+  10.0.1.2 via 10.0.12.2 dev eth1 metric 60
+  10.0.1.2 via 10.0.13.3 dev eth2 metric 100
 
-  R1# ping -c 2 -I 10.0.1.1 10.0.1.2
-  64 bytes from 10.0.1.2: icmp_seq=1 ttl=64 time=0.038 ms
-  64 bytes from 10.0.1.2: icmp_seq=2 ttl=64 time=0.032 ms
-  2 packets transmitted, 2 received, 0% packet loss
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  10.0.1.2 from 10.0.1.1 via 10.0.12.2 dev eth1 uid 0
+      cache
+
+  root@R2:/# ip route show 10.0.1.1/32
+  10.0.1.1 via 10.0.12.1 dev eth1 metric 60
+  10.0.1.1 via 10.0.23.3 dev eth2 metric 100
   ```
 ]
 
 Для моделирования отказа линия R1-R2 была административно отключена с обеих сторон:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
   ip link set eth1 down   # R1
   ip link set eth1 down   # R2
   ```
 ]
 
-После отключения основной маршрут исчез из активной таблицы, и R1 стал использовать резервный next hop `10.0.13.3`. Связь между loopback-интерфейсами сохранилась; TTL ответа уменьшился с 64 до 63, поскольку ответ теперь прошел через дополнительный маршрутизатор R3:
+После отключения интерфейс имеет административное состояние `DOWN`, а основной маршрут удалён из таблицы; остаётся маршрут с метрикой 100 через R3:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ip route get 10.0.1.2 from 10.0.1.1
-  10.0.1.2 from 10.0.1.1 via 10.0.13.3 dev eth2
+#terminal[
+  ```bash
+  root@R1:/# ip -br link show eth1
+  eth1@if9         DOWN           be:57:9a:cd:7e:b8 <BROADCAST,MULTICAST>
 
-  R1# ping -c 3 -I 10.0.1.1 10.0.1.2
-  64 bytes from 10.0.1.2: icmp_seq=1 ttl=63 time=0.085 ms
-  64 bytes from 10.0.1.2: icmp_seq=2 ttl=63 time=0.049 ms
-  64 bytes from 10.0.1.2: icmp_seq=3 ttl=63 time=0.040 ms
-  3 packets transmitted, 3 received, 0% packet loss
+  root@R1:/# ip route show 10.0.1.2/32
+  10.0.1.2 via 10.0.13.3 dev eth2 metric 100
+
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  10.0.1.2 from 10.0.1.1 via 10.0.13.3 dev eth2 uid 0
+      cache
+
+  root@R1:/# ping -c 3 -I 10.0.1.1 10.0.1.2
+  64 bytes from 10.0.1.2: icmp_seq=1 ttl=63 time=0.105 ms
+  64 bytes from 10.0.1.2: icmp_seq=2 ttl=63 time=0.081 ms
+  64 bytes from 10.0.1.2: icmp_seq=3 ttl=63 time=0.092 ms
+  3 packets transmitted, 3 received, 0% packet loss, time 2045ms
   ```
 ]
+
+TTL ответа уменьшился с 64 до 63, поскольку на обратном пути появился промежуточный маршрутизатор R3.
 
 Наиболее наглядная диагностическая команда — `traceroute`:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  traceroute to 10.0.1.2 (10.0.1.2)
-  1  10.0.13.3
-  2  10.0.1.2
+#terminal[
+  ```bash
+  root@R1:/# traceroute -n -s 10.0.1.1 10.0.1.2
+  traceroute to 10.0.1.2 (10.0.1.2), 30 hops max, 60 byte packets
+   1  10.0.13.3  0.026 ms  0.013 ms  0.009 ms
+   2  10.0.1.2   0.040 ms  0.015 ms  0.012 ms
   ```
 ]
 
-Таким образом, после отказа прямого сегмента трафик действительно прошел по пути R1 → R3 → R2.
+После отказа прямого сегмента трафик прошёл по пути R1 -> R3 -> R2.
 
-Отдельно отмечено различие состояний интерфейса Linux: после отключения одного конца veth второй конец оставался административно `UP`, но имел `NO-CARRIER`, а маршруты через него отображались с признаком `linkdown`. После административного `down` второго конца соответствующие статические маршруты были удалены из таблицы. При последующем `ip link set eth1 up` Linux восстановил подключенный маршрут `10.0.12.0/24`, но не удаленный статический маршрут `/32`: его потребовалось добавить повторно. Это отличие важно учитывать при моделировании отказа административным отключением интерфейса.
+При последующем `ip link set eth1 up` ядро восстановило подключенный маршрут `10.0.12.0/24`, но не удалённый статический `/32`: его потребовалось добавить повторно. `UP` означает административное разрешение работы, а `LOWER_UP` — наличие работающего нижележащего канала; их различие подробно описано в справочном разделе.
 
 = Маршрут по умолчанию
 
 После проверки резервирования линия R1--R2 была включена снова, а прямой обратный маршрут на R2 восстановлен. Специфические маршруты R1 к `10.0.1.2/32` были удалены. До добавления default route диагностическая команда подтвердила отсутствие подходящего пути:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ip route get 10.0.1.2 from 10.0.1.1
+#terminal[
+  ```bash
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
   RTNETLINK answers: Network is unreachable
   ```
 ]
 
-На R1 был добавлен маршрут по умолчанию:
+Маршрут был добавлен отдельной командой, после чего сразу выведена вся таблица R1:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
-  ip route add default via 10.0.12.2
-  ```
-]
+  root@R1:/# ip route add default via 10.0.12.2
 
-Итоговая таблица R1:
-
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
+  root@R1:/# ip route show
   default via 10.0.12.2 dev eth1
   10.0.1.3 via 10.0.13.3 dev eth2
   10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.1
@@ -320,22 +478,21 @@
 
 После настройки default route тот же запрос стал разрешаться через R2:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ip route get 10.0.1.2 from 10.0.1.1
-  10.0.1.2 from 10.0.1.1 via 10.0.12.2 dev eth1
+#terminal[
+  ```bash
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  10.0.1.2 from 10.0.1.1 via 10.0.12.2 dev eth1 uid 0
+      cache
 
-  R1# ping -c 2 -I 10.0.1.1 10.0.1.2
-  64 bytes from 10.0.1.2: icmp_seq=1 ttl=64 time=0.046 ms
-  64 bytes from 10.0.1.2: icmp_seq=2 ttl=64 time=0.030 ms
-  2 packets transmitted, 2 received, 0% packet loss
-
-  R1# traceroute -n -s 10.0.1.1 10.0.1.2
-  1  10.0.1.2  0.153 ms
+  root@R1:/# ping -c 3 -I 10.0.1.1 10.0.1.2
+  64 bytes from 10.0.1.2: icmp_seq=1 ttl=64 time=0.132 ms
+  64 bytes from 10.0.1.2: icmp_seq=2 ttl=64 time=0.059 ms
+  64 bytes from 10.0.1.2: icmp_seq=3 ttl=64 time=0.070 ms
+  3 packets transmitted, 3 received, 0% packet loss, time 2031ms
   ```
 ]
 
-Связь R1→R2 восстановилась, а `traceroute` снова показал прямой путь в один переход.
+Связь R1->R2 восстановилась; выбор default route подтверждён независимо командами `ip route get` и `ping`.
 
 = Итоговая конфигурация и диагностика
 
@@ -357,32 +514,7 @@
   [], [`eth2`], [`10.0.23.3/24`],
 )
 
-== Финальные таблицы маршрутизации
-
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1
-   default via 10.0.12.2 dev eth1
-   10.0.1.3 via 10.0.13.3 dev eth2
-   10.0.12.0/24 dev eth1 ...
-   10.0.13.0/24 dev eth2 ...
-
-  R2
-   10.0.1.1 via 10.0.12.1 dev eth1
-   10.0.1.1 via 10.0.23.3 dev eth2 metric 100
-   10.0.1.3 via 10.0.23.3 dev eth2
-   10.0.12.0/24 dev eth1 ...
-   10.0.23.0/24 dev eth2 ...
-
-  R3
-   10.0.1.1 via 10.0.13.1 dev eth1
-   10.0.1.2 via 10.0.23.2 dev eth2
-   10.0.13.0/24 dev eth1 ...
-   10.0.23.0/24 dev eth2 ...
-  ```
-]
-
-Для диагностики в ходе работы использовались команды `ip -br addr`, `ip -br link`, `ip route`, `ip route show table local`, `ip route get`, `ping` и `traceroute`. В отчет включены только результаты, необходимые для подтверждения ключевых этапов, без дублирования однотипного терминального вывода.
+Полные таблицы маршрутизации уже приведены непосредственно после тех операций, которые их изменяли. Это позволяет сопоставить причину и результат и не смешивать несовместимые промежуточные конфигурации в одну «финальную» таблицу.
 
 = Ответы на контрольные вопросы
 
@@ -392,7 +524,7 @@
 
 == Какой исходный IP будет выбран для ping без явного указания source?
 
-Маршрутизатор выбирает исходный адрес в соответствии с выбранным выходным интерфейсом. Для прямого маршрута R1→R2 через сеть `10.0.12.0/24` источником стал бы адрес `10.0.12.1`, а не loopback `10.0.1.1`. Поэтому для проверки именно связи loopback-to-loopback источник указывался явно (`ping -I 10.0.1.1 ...`; в Huawei — параметр `-a`).
+Маршрутизатор выбирает исходный адрес в соответствии с выбранным выходным интерфейсом. Для прямого маршрута R1->R2 через сеть `10.0.12.0/24` источником стал бы адрес `10.0.12.1`, а не loopback `10.0.1.1`. Поэтому для проверки именно связи loopback-to-loopback источник указывался явно (`ping -I 10.0.1.1 ...`; в Huawei — параметр `-a`).
 
 = Вывод по первой части
 
@@ -412,7 +544,7 @@
 
 Для реализации OSPF образ маршрутизатора был дополнен FRRouting. В работе использовалась версия FRR 8.4.4. Демон `ospfd` реализует OSPFv2, а `zebra` взаимодействует с таблицей маршрутизации ядра Linux и устанавливает рассчитанные маршруты в FIB. Для корректного запуска контейнеров использовались capabilities `NET_ADMIN`, `NET_RAW` и `SYS_ADMIN`.
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```dockerfile
   FROM ubuntu:24.04
 
@@ -424,7 +556,7 @@
 
 В контейнерах были запущены только необходимые для данной работы демоны FRR. Проверка на каждом маршрутизаторе показала работающие процессы `zebra` и `ospfd`:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
   /usr/lib/frr/zebra -d -A 127.0.0.1 -f /etc/frr/zebra.conf
   /usr/lib/frr/ospfd -d -A 127.0.0.1 -f /etc/frr/ospfd.conf
@@ -437,220 +569,279 @@
 
 После создания `veth`-соединений и назначения адресов непосредственно подключенные интерфейсы были доступны. Например, на R1 проверки двух соседей завершились без потерь:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ping -c 2 10.0.12.2
-  2 packets transmitted, 2 received, 0% packet loss
-
-  R1# ping -c 2 10.0.13.3
-  2 packets transmitted, 2 received, 0% packet loss
-  ```
-]
-
-До запуска OSPF в основной таблице R1 присутствовали только непосредственно подключенные сети:
-
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
+#terminal[
+  ```bash
+  root@R1:/# ip route show
   10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.1
   10.0.13.0/24 dev eth2 proto kernel scope link src 10.0.13.1
+
+  root@R1:/# vtysh -c "show ip ospf neighbor"
+  % OSPF is not enabled in vrf default
+
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  RTNETLINK answers: Network is unreachable
   ```
 ]
 
-Поэтому проверка связи между удаленными loopback-интерфейсами была неуспешной:
-
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ping -c 2 -W 1 -I 10.0.1.1 10.0.1.2
-  2 packets transmitted, 0 received, 100% packet loss
-  ```
-]
-
-Таким образом, перед настройкой динамической маршрутизации физическая связность существовала, но маршрутов к удаленным loopback-адресам еще не было.
+Перед второй частью были удалены все статические записи: физическая связность сохранилась, процесс OSPF ещё не был включён, а маршрута к loopback R2 не было. FRR-демоны были перезапущены с пустой RIB, чтобы записи первой части не влияли на опыт.
 
 == Настройка базового OSPF
 
 На всех трех устройствах был создан процесс OSPF и явно задан Router ID, совпадающий с loopback-адресом. Все сети были помещены в backbone-area `0.0.0.0`.
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  # R1
-  router ospf
-   ospf router-id 10.0.1.1
-   network 10.0.1.1/32 area 0.0.0.0
-   network 10.0.12.0/24 area 0.0.0.0
-   network 10.0.13.0/24 area 0.0.0.0
+  R1(config)# router ospf
+  R1(config-router)# ospf router-id 10.0.1.1
+  R1(config-router)# network 10.0.1.1/32 area 0.0.0.0
+  R1(config-router)# network 10.0.12.0/24 area 0.0.0.0
+  R1(config-router)# network 10.0.13.0/24 area 0.0.0.0
 
-  # R2
-  router ospf
-   ospf router-id 10.0.1.2
-   network 10.0.1.2/32 area 0.0.0.0
-   network 10.0.12.0/24 area 0.0.0.0
-   network 10.0.23.0/24 area 0.0.0.0
+  R2(config)# router ospf
+  R2(config-router)# ospf router-id 10.0.1.2
+  R2(config-router)# network 10.0.1.2/32 area 0.0.0.0
+  R2(config-router)# network 10.0.12.0/24 area 0.0.0.0
+  R2(config-router)# network 10.0.23.0/24 area 0.0.0.0
 
-  # R3
-  router ospf
-   ospf router-id 10.0.1.3
-   network 10.0.1.3/32 area 0.0.0.0
-   network 10.0.13.0/24 area 0.0.0.0
-   network 10.0.23.0/24 area 0.0.0.0
+  R3(config)# router ospf
+  R3(config-router)# ospf router-id 10.0.1.3
+  R3(config-router)# network 10.0.1.3/32 area 0.0.0.0
+  R3(config-router)# network 10.0.13.0/24 area 0.0.0.0
+  R3(config-router)# network 10.0.23.0/24 area 0.0.0.0
   ```
 ]
 
-После сходимости OSPF маршруты автоматически появились в таблице Linux. На R1:
+`router-id` — уникальный 32-битный идентификатор OSPF-маршрутизатора; здесь он намеренно совпадает с устойчивым loopback-адресом. `network ... area` не создаёт сеть, а выбирает интерфейсы, на которых запускается OSPF, и относит их к backbone-area `0.0.0.0`.
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+После запуска на broadcast-интерфейсах кратковременно наблюдались состояния `Init` и `2-Way`: маршрутизаторы обменивались Hello и выбирали DR/BDR. После сходимости на R1 сформировались два соседства `Full`:
+
+#terminal[
   ```text
-  10.0.1.2 via 10.0.12.2 dev eth1 proto ospf metric 20
-  10.0.1.3 via 10.0.13.3 dev eth2 proto ospf metric 20
-  10.0.23.0/24 proto ospf metric 20
-      nexthop via 10.0.12.2 dev eth1 weight 1
+  root@R1:/# vtysh -c "show ip ospf neighbor"
+
+  Neighbor ID  Pri State       Dead Time Address     Interface
+  10.0.1.2       1 Full/DR       35.377s 10.0.12.2   eth1:10.0.12.1
+  10.0.1.3       1 Full/DR       35.508s 10.0.13.3   eth2:10.0.13.1
+  ```
+]
+
+`Full` означает синхронизированную LSDB; `DR` — роль соседа Designated Router на данном broadcast-сегменте. `Dead Time` показывает оставшееся время, после которого сосед будет признан недоступным без новых Hello.
+
+FRR показывает свою RIB командой `show ip route ospf`, а ядро — командой `ip route show proto ospf`:
+
+#terminal[
+  ```text
+  root@R1:/# vtysh -c "show ip route ospf"
+  O>* 10.0.1.2/32 [110/10] via 10.0.12.2, eth1, weight 1
+  O>* 10.0.1.3/32 [110/10] via 10.0.13.3, eth2, weight 1
+  O>* 10.0.23.0/24 [110/20] via 10.0.12.2, eth1, weight 1
+    *                       via 10.0.13.3, eth2, weight 1
+
+  root@R1:/# ip route show proto ospf
+  10.0.1.2 nhid 38 via 10.0.12.2 dev eth1 metric 20
+  10.0.1.3 nhid 34 via 10.0.13.3 dev eth2 metric 20
+  10.0.23.0/24 nhid 39 metric 20
       nexthop via 10.0.13.3 dev eth2 weight 1
+      nexthop via 10.0.12.2 dev eth1 weight 1
   ```
 ]
 
-Для сети `10.0.23.0/24` были установлены два равноценных next hop. Это демонстрирует ECMP: OSPF может одновременно использовать несколько путей с одинаковой суммарной стоимостью.
+В FRR `O` обозначает OSPF, `>` — выбранный маршрут, `*` — установленный в FIB; `[110/10]` содержит administrative distance и OSPF cost. Для `10.0.23.0/24` установлены два равноценных next hop с `weight 1`, то есть ECMP.
 
-Повторная проверка loopback-to-loopback после запуска OSPF стала успешной:
+После появления маршрута проверка loopback стала успешной:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ping -c 3 -I 10.0.1.1 10.0.1.2
-  3 packets transmitted, 3 received, 0% packet loss
+#terminal[
+  ```bash
+  root@R1:/# ping -c 3 -I 10.0.1.1 10.0.1.2
+  64 bytes from 10.0.1.2: icmp_seq=1 ttl=64 time=0.083 ms
+  64 bytes from 10.0.1.2: icmp_seq=2 ttl=64 time=0.067 ms
+  64 bytes from 10.0.1.2: icmp_seq=3 ttl=64 time=0.070 ms
+  3 packets transmitted, 3 received, 0% packet loss, time 2035ms
   ```
 ]
 
-В отличие от первой части, ни один маршрут `ip route add` к удаленному loopback не создавался вручную: его рассчитали `ospfd` и `zebra`.
+В отличие от первой части, к удалённым loopback не выполнялось ни одной команды `ip route add`: маршруты рассчитал `ospfd`, а `zebra` установила их в FIB ядра.
 
 == Аутентификация OSPF
 
-На OSPF-интерфейсах была включена криптографическая аутентификация MD5. В качестве идентификатора ключа использовалось значение `1`, пароль — `HCIA-Datacom`. Пример конфигурации R1:
+Аутентификация настраивалась намеренно поэтапно. Сначала режим message-digest и ключ были включены только на двух интерфейсах R1:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  interface eth1
-   ip ospf authentication message-digest
-   ip ospf message-digest-key 1 md5 HCIA-Datacom
+  R1(config)# interface eth1
+  R1(config-if)# ip ospf authentication message-digest
+  R1(config-if)# ip ospf message-digest-key 1 md5 HCIA-Datacom
 
-  interface eth2
-   ip ospf authentication message-digest
-   ip ospf message-digest-key 1 md5 HCIA-Datacom
+  R1(config)# interface eth2
+  R1(config-if)# ip ospf authentication message-digest
+  R1(config-if)# ip ospf message-digest-key 1 md5 HCIA-Datacom
   ```
 ]
 
-Аналогичная аутентификация была настроена на соответствующих OSPF-интерфейсах остальных маршрутизаторов. Команда `show ip ospf interface` на R1 подтвердила ее применение на обоих физических интерфейсах:
+`message-digest-key 1` задаёт идентификатор ключа 1; `md5` — алгоритм, а `HCIA-Datacom` — общий секрет. На обоих концах линии должны совпадать режим, key ID и секрет. Команда проверки показала, что режим применён, но до истечения Dead Timer старые соседства ещё могли временно отображаться:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  eth1 ... Area 0.0.0.0
-    Neighbor Count is 1, Adjacent neighbor count is 1
+  root@R1:/# vtysh -c "show ip ospf interface eth1"
+  eth1 is up
+    Network Type BROADCAST, Cost: 10
+    Timer intervals configured, Hello 10s, Dead 40s
     Cryptographic authentication enabled
     Algorithm:MD5
 
-  eth2 ... Area 0.0.0.0
-    Neighbor Count is 1, Adjacent neighbor count is 1
-    Cryptographic authentication enabled
-    Algorithm:MD5
+  root@R1:/# vtysh -c "show ip ospf neighbor"
+  Neighbor ID  Pri State  Dead Time Address Interface
+
+  root@R1:/# ip route show proto ospf
   ```
 ]
 
-После согласованной настройки на всех концах OSPF-соседства сохранились в состоянии `Full`. На R1 наблюдались оба соседа:
+Пустые результаты после 40 секунд означают, что R2 и R3 продолжали отправлять неаутентифицированные Hello: R1 их отвергал, соседства истекли, а изученные OSPF-маршруты были удалены из FIB.
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+Затем тот же интерфейсный режим и ключ были настроены на R2. Связь R1--R2 восстановилась, а R2--R3 осталась разорванной:
+
+#terminal[
   ```text
-  Neighbor ID     State       Address       Interface
-  10.0.1.2       Full/DR     10.0.12.2     eth1:10.0.12.1
-  10.0.1.3       Full/DR     10.0.13.3     eth2:10.0.13.1
+  root@R2:/# vtysh -c "show ip ospf neighbor"
+
+  Neighbor ID  Pri State        Dead Time Address     Interface
+  10.0.1.1       1 Full/Backup    30.424s 10.0.12.1   eth1:10.0.12.2
   ```
 ]
 
-Состояние `Full` означает, что соседние маршрутизаторы завершили формирование adjacency и синхронизацию базы состояний каналов.
+На R3, как и в методичке Huawei, применена аутентификация всей area 0. В FRR режим задаётся на уровне area, но сами ключи всё равно назначаются интерфейсам:
+
+#terminal[
+  ```text
+  R3(config-router)# area 0.0.0.0 authentication message-digest
+  R3(config)# interface eth1
+  R3(config-if)# ip ospf message-digest-key 1 md5 HCIA-Datacom
+  R3(config)# interface eth2
+  R3(config-if)# ip ospf message-digest-key 1 md5 HCIA-Datacom
+
+  root@R3:/# vtysh -c "show ip ospf neighbor"
+  Neighbor ID  Pri State        Dead Time Address     Interface
+  10.0.1.1       1 Full/Backup    35.498s 10.0.13.1   eth1:10.0.13.3
+  10.0.1.2       1 Full/Backup    35.609s 10.0.23.2   eth2:10.0.23.3
+  ```
+]
+
+Последний вывод подтверждает восстановление обоих соседств после согласования параметров аутентификации.
 
 == Анонсирование маршрута по умолчанию
 
 R1 использовался как граничный маршрутизатор и был настроен на безусловное анонсирование маршрута `0.0.0.0/0` в OSPF:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  router ospf
-   default-information originate always
+  R1(config)# router ospf
+  R1(config-router)# default-information originate always
   ```
 ]
 
 Параметр `always` позволяет распространять default route даже при отсутствии собственного маршрута по умолчанию в основной таблице R1. Это является функциональным аналогом Huawei-команды `default-route-advertise always`.
 
-На R2 был получен маршрут по умолчанию через R1:
+Сначала проверено, что в Linux-таблице самого R1 default route действительно отсутствует. Тем не менее R2 и R3 получили внешний OSPF-маршрут:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  O>* 0.0.0.0/0 [110/1] via 10.0.12.1, eth1
+  root@R1:/# ip route show default
 
+  root@R2:/# vtysh -c "show ip route 0.0.0.0/0"
+  Routing entry for 0.0.0.0/0
+    Known via "ospf", distance 110, metric 1, best
+    * 10.0.12.1, via eth1, weight 1
+
+  root@R2:/# ip route show default
   default via 10.0.12.1 dev eth1 proto ospf metric 20
   ```
 ]
 
 На R3 результат аналогичен:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  O>* 0.0.0.0/0 [110/1] via 10.0.13.1, eth1
+  root@R3:/# vtysh -c "show ip route 0.0.0.0/0"
+  Routing entry for 0.0.0.0/0
+    Known via "ospf", distance 110, metric 1, best
+    * 10.0.13.1, via eth1, weight 1
 
+  root@R3:/# ip route show default
   default via 10.0.13.1 dev eth1 proto ospf metric 20
   ```
 ]
 
-Таким образом, OSPF-информация, полученная FRR, была не только рассчитана внутри routing-daemon, но и установлена `zebra` в таблицу маршрутизации Linux.
+Полученная FRR OSPF-информация была рассчитана routing-daemon и затем установлена `zebra` в таблицу маршрутизации Linux.
 
 == Управление выбором маршрута с помощью OSPF cost
 
-В FRR исходная стоимость каждого физического OSPF-интерфейса составляла `10`. Поэтому прямой путь R1→R2 имел стоимость 10, а альтернативный R1→R3→R2 — стоимость 20. Чтобы принудительно выбрать путь через R3, стоимость `eth1` на R1 была увеличена до 30:
+В FRR исходная стоимость каждого физического OSPF-интерфейса составляла `10`. До изменения R1 выбирал прямой путь стоимостью 10:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  interface eth1
-   ip ospf cost 30
+  root@R1:/# vtysh -c "show ip route 10.0.1.2/32"
+  Routing entry for 10.0.1.2/32
+    Known via "ospf", distance 110, metric 10, best
+    * 10.0.12.2, via eth1, weight 1
+
+  root@R1:/# traceroute -n -s 10.0.1.1 10.0.1.2
+  traceroute to 10.0.1.2 (10.0.1.2), 30 hops max, 60 byte packets
+   1  10.0.1.2  0.563 ms  0.036 ms  0.035 ms
   ```
 ]
 
-После пересчета SPF маршрут R1 к loopback R2 изменился:
+Альтернатива R1->R3->R2 имеет стоимость `10 + 10 = 20`. Поэтому для переключения стоимость прямого интерфейса должна быть больше 20; было выбрано 30:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  R1# show ip route 10.0.1.2/32
+  R1(config)# interface eth1
+  R1(config-if)# ip ospf cost 30
+  ```
+]
+
+После пересчёта SPF маршрут изменился:
+
+#terminal[
+  ```text
+  root@R1:/# vtysh -c "show ip route 10.0.1.2/32"
   Routing entry for 10.0.1.2/32
     Known via "ospf", distance 110, metric 20, best
     * 10.0.13.3, via eth2, weight 1
 
-  R1# ip route get 10.0.1.2 from 10.0.1.1
-  10.0.1.2 from 10.0.1.1 via 10.0.13.3 dev eth2
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  10.0.1.2 from 10.0.1.1 via 10.0.13.3 dev eth2 uid 0
+      cache
   ```
 ]
 
 Суммарная стоимость пути через R3 равна `10 + 10 = 20`, что меньше стоимости прямой линии `30`. Трассировка подтвердила изменение пути:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  R1# traceroute -n -s 10.0.1.1 10.0.1.2
-  1  10.0.13.3
-  2  10.0.1.2
+  root@R1:/# traceroute -n -s 10.0.1.1 10.0.1.2
+  traceroute to 10.0.1.2 (10.0.1.2), 30 hops max, 60 byte packets
+   1  10.0.13.3  0.561 ms  0.028 ms  0.018 ms
+   2  10.0.1.2   0.027 ms  0.012 ms  *
   ```
 ]
 
-В Linux/FRR конечный R2 ответил на второй hop своим loopback-адресом `10.0.1.2`; при этом фактический путь соответствует R1 → R3 → R2.
+В Linux/FRR конечный R2 ответил на второй hop своим loopback-адресом `10.0.1.2`; при этом фактический путь соответствует R1 -> R3 -> R2.
 
 == Асимметричный обратный маршрут
 
-Изменение стоимости выполнялось только на интерфейсе `eth1` маршрутизатора R1. Поэтому стоимость направления R2→R1 не изменилась. Проверка на R2 показала:
+Изменение стоимости выполнялось только на интерфейсе `eth1` маршрутизатора R1. Поэтому стоимость направления R2->R1 не изменилась. Проверка на R2 показала:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  R2# ip route get 10.0.1.1 from 10.0.1.2
-  10.0.1.1 from 10.0.1.2 via 10.0.12.1 dev eth1
+  root@R2:/# ip route get 10.0.1.1 from 10.0.1.2
+  10.0.1.1 from 10.0.1.2 via 10.0.12.1 dev eth1 uid 0
+      cache
   ```
 ]
 
 В результате прямой и обратный пути стали различаться:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
   ICMP request: R1 -> R3 -> R2
   ICMP reply:   R2 -> R1
@@ -661,60 +852,65 @@ R1 использовался как граничный маршрутизато
 
 == Проверка отказоустойчивости OSPF
 
-Для моделирования отказа на R1 был административно отключен интерфейс `eth2`, соединяющий R1 с R3:
+Для моделирования отказа линия R1--R3 была административно отключена с двух концов:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
-  ip link set eth2 down
+  root@R1:/# ip link set eth2 down
+  root@R3:/# ip link set eth1 down
   ```
 ]
 
-После отказа сосед R3 исчез из списка, а соседство R1--R2 осталось в состоянии `Full`. OSPF автоматически заменил недоступный путь через R3 прямым путем R1→R2, несмотря на его более высокую стоимость:
+После отказа сосед R3 исчез из списка, а соседство R1--R2 осталось в состоянии `Full`. OSPF автоматически заменил недоступный путь через R3 прямым путем R1->R2, несмотря на его более высокую стоимость:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  R1# show ip ospf neighbor
-  10.0.1.2  Full/DR  10.0.12.2  eth1:10.0.12.1
+  root@R1:/# ip -br link show eth2
+  eth2@if11        DOWN  8a:88:09:06:af:62 <BROADCAST,MULTICAST>
 
-  R1# show ip route 10.0.1.2/32
-  Known via "ospf", distance 110, metric 30, best
-  * 10.0.12.2, via eth1, weight 1
+  root@R1:/# vtysh -c "show ip ospf neighbor"
+  Neighbor ID  Pri State    Dead Time Address     Interface
+  10.0.1.2       1 Full/DR    37.984s 10.0.12.2   eth1:10.0.12.1
 
-  R1# ip route get 10.0.1.2 from 10.0.1.1
-  10.0.1.2 from 10.0.1.1 via 10.0.12.2 dev eth1
-  ```
-]
+  root@R1:/# vtysh -c "show ip route 10.0.1.2/32"
+  Routing entry for 10.0.1.2/32
+    Known via "ospf", distance 110, metric 30, best
+    * 10.0.12.2, via eth1, weight 1
 
-Связность при этом сохранилась:
-
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
-  ```text
-  R1# ping -c 3 -I 10.0.1.1 10.0.1.2
-  3 packets transmitted, 3 received, 0% packet loss
+  root@R1:/# ping -c 3 -I 10.0.1.1 10.0.1.2
+  64 bytes from 10.0.1.2: icmp_seq=1 ttl=64 time=0.053 ms
+  64 bytes from 10.0.1.2: icmp_seq=2 ttl=64 time=0.083 ms
+  64 bytes from 10.0.1.2: icmp_seq=3 ttl=64 time=0.062 ms
+  3 packets transmitted, 3 received, 0% packet loss, time 2079ms
   ```
 ]
 
 После восстановления интерфейса:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```bash
-  ip link set eth2 up
+  root@R1:/# ip link set eth2 up
+  root@R3:/# ip link set eth1 up
   ```
 ]
 
 OSPF повторно сформировал соседство с R3. После завершения сходимости оба соседа R1 находились в состоянии `Full`, а более дешевый маршрут через R3 был возвращен автоматически:
 
-#block(fill: rgb("f4f5f7"), inset: 8pt, radius: 4pt)[
+#terminal[
   ```text
-  Neighbor ID     State       Address       Interface
-  10.0.1.2       Full/DR     10.0.12.2     eth1:10.0.12.1
-  10.0.1.3       Full/DR     10.0.13.3     eth2:10.0.13.1
+  root@R1:/# vtysh -c "show ip ospf neighbor"
+  Neighbor ID  Pri State    Dead Time Address     Interface
+  10.0.1.2       1 Full/DR    31.734s 10.0.12.2   eth1:10.0.12.1
+  10.0.1.3       1 Full/DR    33.868s 10.0.13.3   eth2:10.0.13.1
 
+  root@R1:/# vtysh -c "show ip route 10.0.1.2/32"
   Routing entry for 10.0.1.2/32
     Known via "ospf", distance 110, metric 20, best
     * 10.0.13.3, via eth2, weight 1
 
-  10.0.1.2 from 10.0.1.1 via 10.0.13.3 dev eth2
+  root@R1:/# ip route get 10.0.1.2 from 10.0.1.1
+  10.0.1.2 from 10.0.1.1 via 10.0.13.3 dev eth2 uid 0
+      cache
   ```
 ]
 
@@ -724,10 +920,107 @@ OSPF повторно сформировал соседство с R3. Посл�
 
 На шаге изменения стоимости маршрутизатор R2 использует для возврата ICMP-пакетов к loopback R1 прямой маршрут через `10.0.12.1` (`eth1`). Это подтверждено командой `ip route get 10.0.1.1 from 10.0.1.2`.
 
-Причина заключается в том, что стоимость была увеличена только на исходящем интерфейсе R1→R2. Для R1 прямой путь к R2 стал иметь стоимость 30, поэтому был выбран путь R1→R3→R2 со стоимостью 20. На R2 стоимость собственного прямого интерфейса в сторону R1 не менялась, поэтому обратный ICMP reply передается непосредственно R2→R1. Таким образом, в данном эксперименте сформировалась асимметричная маршрутизация.
+Причина заключается в том, что стоимость была увеличена только на исходящем интерфейсе R1->R2. Для R1 прямой путь к R2 стал иметь стоимость 30, поэтому был выбран путь R1->R3->R2 со стоимостью 20. На R2 стоимость собственного прямого интерфейса в сторону R1 не менялась, поэтому обратный ICMP reply передается непосредственно R2->R1. В эксперименте сформировалась асимметричная маршрутизация.
 
 == Вывод по второй части
 
 Во второй части на том же трехмаршрутизаторном Docker-стенде была реализована однозонная маршрутизация OSPF с помощью FRRouting. После запуска `zebra` и `ospfd` маршрутизаторы автоматически обменялись информацией о сетях и установили маршруты к удаленным loopback-интерфейсам. Была проверена MD5-аутентификация OSPF, распространение маршрута по умолчанию с R1, ECMP для равноценных путей и изменение выбора маршрута через настройку OSPF cost.
 
-Изменение стоимости показало, что OSPF выбирает путь по суммарной метрике, а прямой и обратный маршруты могут различаться. При отключении предпочтительного канала OSPF автоматически переключил трафик на оставшийся путь без потери связности, а после восстановления интерфейса вновь выбрал маршрут с меньшей стоимостью. Таким образом, в отличие от статической маршрутизации первой части, динамический протокол самостоятельно реагирует на изменение топологии и поддерживает актуальные маршруты в таблице Linux.
+Изменение стоимости показало, что OSPF выбирает путь по суммарной метрике, а прямой и обратный маршруты могут различаться. При отключении предпочтительного канала OSPF автоматически переключил трафик на оставшийся путь без потери связности, а после восстановления интерфейса вновь выбрал маршрут с меньшей стоимостью. В отличие от статической маршрутизации первой части, динамический протокол самостоятельно реагирует на изменение топологии и поддерживает актуальные маршруты в таблице Linux.
+
+= Справочная информация по командам и выводу
+
+== Параметры виртуального стенда
+
+`ip link add r1-r2 type veth peer name r2-r1` создаёт пару виртуальных Ethernet-интерфейсов: пакет, отправленный в один конец, появляется на другом. `ip link set ... netns PID` переносит конец пары в network namespace процесса с указанным PID; после этого интерфейс виден только соответствующему контейнеру.
+
+Контейнерный параметр `--network none` запрещает Docker создавать собственный `eth0` и маршруты, чтобы топология полностью определялась вручную. Capability `NET_ADMIN` разрешает изменение адресов, интерфейсов и маршрутов, `NET_RAW` — raw-сокеты для ICMP и OSPF, `SYS_ADMIN` потребовалась используемой реализации FRR. Sysctl `net.ipv4.ip_forward=1` включает пересылку IPv4 между интерфейсами. В Dockerfile ключ `apt-get -y` автоматически подтверждает установку перечисленных пакетов, а `rm -rf /var/lib/apt/lists/*` уменьшает размер образа, удаляя скачанные индексы пакетов после установки.
+
+== Как Linux создаёт маршруты при назначении адреса
+
+Команда `ip addr add 10.0.12.1/24 dev eth1` передаёт ядру запрос Netlink на добавление адреса. Если интерфейс существует и префикс не помечен `noprefixroute`, ядро в рамках той же операции создаёт связанные записи. Это происходит не при загрузке ОС как отдельный поздний этап, а непосредственно при назначении адреса — из загрузочного скрипта, сетевого менеджера или команды администратора.
+
+Для адреса `10.0.12.1/24` появляются:
+
+- `10.0.12.0/24` в таблице `main` — достижимость всей непосредственно подключенной сети;
+- `local 10.0.12.1/32` в таблице `local` — доставка пакетов самому Linux-хосту;
+- `broadcast 10.0.12.255/32` в таблице `local` — обработка directed broadcast данного префикса.
+
+Таблица `local` имеет более высокий приоритет в стандартных правилах RPDB и обычно просматривается отдельно командой `ip route show table local`; поэтому одна команда `ip route show` не показывает все три записи.
+
+Расшифровка строки `10.0.12.0/24 dev eth1 proto kernel scope link src 10.0.12.1`:
+
+#table(
+  columns: (1.2fr, 3.8fr),
+  inset: 5pt,
+  stroke: 0.5pt,
+  [*Поле*], [*Значение*],
+  [`10.0.12.0/24`], [префикс назначения; `/24` означает 24 единичных бита маски (`255.255.255.0`)],
+  [`dev eth1`], [выходной интерфейс],
+  [`proto kernel`], [источник записи — ядро, а не команда статического маршрута или routing-daemon],
+  [`scope link`], [назначение находится непосредственно на данном канале; промежуточный шлюз не нужен],
+  [`src 10.0.12.1`], [предпочтительный локальный адрес источника, если приложение не выбрало другой],
+  [`scope host`], [маршрут действителен только внутри локального хоста; типичен для собственных адресов],
+  [`local` / `broadcast`], [тип маршрута: доставка локальному стеку или широковещательная доставка],
+)
+
+При административном `ip link set eth1 down` адрес остаётся назначенным, но связанные активные маршруты и вручную созданные маршруты через этот интерфейс могут быть удалены из FIB. После `up` ядро восстанавливает собственный connected route, но удалённый статический маршрут необходимо создать снова.
+
+== Параметры команд Linux
+
+#table(
+  columns: (1.55fr, 3.45fr),
+  inset: 5pt,
+  stroke: 0.5pt,
+  [*Запись*], [*Назначение*],
+  [`ip -br addr`], [`-br` (`brief`) включает компактный однострочный формат интерфейсов],
+  [`ip route add`], [добавляет запись; `via` задаёт next hop, `dev` — интерфейс, `/32` — ровно один IPv4-адрес],
+  [`ip route get ... from ...`], [показывает фактический выбор ядра для пакета с указанными назначением и источником, но пакет не отправляет],
+  [`uid 0`], [поиск выполнен от имени UID 0; policy routing может учитывать UID],
+  [`cache`], [выведен результат разрешённого route lookup; это не отдельная старая глобальная таблица route cache],
+  [`metric 60`], [предпочтение среди Linux-маршрутов одного префикса; меньшее значение предпочтительнее],
+  [`ip link set ... down/up`], [административно выключает/включает интерфейс],
+  [`UP`], [интерфейс административно включён],
+  [`LOWER_UP`], [нижний уровень сообщает о работающем канале; `UP` без `LOWER_UP` не гарантирует передачу],
+  [`ping -c 3`], [`-c` (`count`) завершает программу после трёх echo request],
+  [`ping -I 10.0.1.1`], [`-I` выбирает исходный адрес/интерфейс; использован для проверки именно loopback-to-loopback],
+  [`icmp_seq`], [порядковый номер ICMP echo],
+  [`ttl`], [Time To Live ответа; каждый маршрутизатор уменьшает TTL на единицу],
+  [`rtt min/avg/max/mdev`], [минимальное, среднее, максимальное время round trip и mean deviation],
+  [`traceroute -n`], [`-n` запрещает обратные DNS-запросы и оставляет числовые адреса],
+  [`traceroute -s ADDRESS`], [`-s` задаёт адрес источника пробных пакетов],
+  [`*` в traceroute], [на конкретную пробу не получен ответ за время ожидания; это не обязательно означает потерю пользовательского трафика],
+)
+
+Флаг `-W`, встречавшийся в предыдущей версии отчёта, исключён: он задавал тайм-аут ожидания отдельного ответа и не был нужен для смысла опыта. Оставлены только `-c`, необходимый для конечного автоматизированного запуска, и `-I`, необходимый для выбора loopback-источника.
+
+== FRRouting, OSPF и его диагностические поля
+
+`ospfd` строит соседства, хранит LSDB и рассчитывает SPF. `zebra` объединяет маршруты протоколов в RIB FRR и через Netlink программирует FIB ядра. `vtysh` предоставляет общий CLI. В командах запуска демонов `-d` переводит процесс в фоновый режим, `-A 127.0.0.1` ограничивает адрес VTY, `-f FILE` выбирает файл конфигурации. В `vtysh -c "..."` параметр `-c` означает выполнение одной CLI-команды и не связан с `ping -c`.
+
+#table(
+  columns: (1.35fr, 3.65fr),
+  inset: 5pt,
+  stroke: 0.5pt,
+  [*Поле*], [*Смысл*],
+  [`O`], [маршрут известен через OSPF],
+  [`>`], [FRR выбрал маршрут как лучший в своей RIB],
+  [`*`], [маршрут передан в FIB],
+  [`[110/10]`], [administrative distance 110 и OSPF cost 10],
+  [`proto ospf`], [в таблицу ядра запись установлена процессом маршрутизации OSPF через FRR],
+  [`metric 20` у Linux], [служебная метрика Netlink, с которой FRR установила маршрут; OSPF cost следует смотреть в RIB FRR],
+  [`nhid`], [идентификатор kernel nexthop object, используемого маршрутом],
+  [`nexthop via`], [один из шлюзов составного ECMP-маршрута],
+  [`weight 1`], [равный вес next hop; при двух записях обе участвуют в ECMP],
+  [`Pri`], [OSPF interface priority при выборе DR/BDR],
+  [`Init`], [Hello соседа получен, но собственный Router ID ещё не увиден в его Hello],
+  [`2-Way`], [двусторонний Hello-обмен подтверждён],
+  [`Full`], [adjacency сформирована и LSDB синхронизирована],
+  [`DR` / `Backup`], [Designated Router и Backup Designated Router на broadcast-сегменте],
+  [`Dead Time`], [оставшееся время до признания соседа недоступным без Hello],
+  [`RXmtL/RqstL/DBsmL`], [длины списков retransmission, link-state request и database summary; нули характерны для устойчивого соседства],
+)
+
+`default-information originate always` создаёт и распространяет OSPF default route даже без `0.0.0.0/0` в таблице R1. Это не создаёт у R1 реального выхода в Интернет: команда только сообщает соседям, что неизвестные назначения следует отправлять R1.
+
+OSPF cost является направленной стоимостью исходящего интерфейса. Поэтому изменение cost только на R1 изменило путь запроса R1->R2, но не обязало R2 использовать тот же путь для ответа. После отказа или восстановления линии `Full` и маршруты появляются не мгновенно: нужны Hello-обмен, выборы DR/BDR, синхронизация LSDB и новый расчёт SPF.
