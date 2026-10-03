@@ -1,0 +1,30 @@
+1: process 1 (pid 39010, parent 39009) has STARTED with balance $ 1
+1: process 2 (pid 39011, parent 39009) has STARTED with balance $ 2
+1: process 3 (pid 39012, parent 39009) has STARTED with balance $ 3
+1: process 4 (pid 39013, parent 39009) has STARTED with balance $ 4
+1: process 5 (pid 39014, parent 39009) has STARTED with balance $ 5
+5: process 1 received all STARTED messages
+5: process 2 received all STARTED messages
+5: process 3 received all STARTED messages
+5: process 4 received all STARTED messages
+5: process 5 received all STARTED messages
+9: process 1 transferred $ 1 to process 2
+10: process 2 received $ 1 from process 1
+15: process 2 transferred $ 2 to process 3
+16: process 3 received $ 2 from process 2
+21: process 3 transferred $ 3 to process 4
+22: process 4 received $ 3 from process 3
+27: process 4 transferred $ 4 to process 5
+28: process 5 received $ 4 from process 4
+33: process 5 transferred $ 1 to process 1
+34: process 1 received $ 1 from process 5
+39: process 1 has DONE with balance $ 1
+39: process 2 has DONE with balance $ 1
+39: process 3 has DONE with balance $ 2
+39: process 4 has DONE with balance $ 3
+39: process 5 has DONE with balance $ 8
+43: process 1 received all DONE messages
+43: process 2 received all DONE messages
+43: process 3 received all DONE messages
+43: process 4 received all DONE messages
+43: process 5 received all DONE messages
