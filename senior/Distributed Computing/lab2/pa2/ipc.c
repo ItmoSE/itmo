@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
+#include <string.h>
 #include <unistd.h>
 
 /*
@@ -164,154 +165,97 @@ int send_multicast(void *self, const Message *msg) {
   return 0;
 }
 
+typedef enum {
+  RECEIVE_ATTEMPT_ERROR = -1,
+  RECEIVE_ATTEMPT_COMPLETE = 0,
+  RECEIVE_ATTEMPT_EMPTY = 1,
+  RECEIVE_ATTEMPT_CLOSED = 2
+} ReceiveAttemptResult;
+
 /*
  * Try to receive a message without blocking.
  *
- * return:
- *     0  message received
- *     1  no message available
- *    -1  error
+ * RECEIVE_ATTEMPT_COMPLETE - complete message received
+ * RECEIVE_ATTEMPT_EMPTY    - no message available right now
+ * RECEIVE_ATTEMPT_CLOSED   - pipe was closed before a new message
+ * RECEIVE_ATTEMPT_ERROR    - actual error or truncated message
  */
-static int try_receive(IpcContext *ctx, local_id from, Message *msg) {
+static ReceiveAttemptResult try_receive(IpcContext *ctx, local_id from,
+                                        Message *msg) {
   element *channel = get_channel(ctx, from, ctx->self_id);
 
   int fd = channel->read_fd;
 
   if (fd < 0) {
     errno = EBADF;
-    return -1;
+    return RECEIVE_ATTEMPT_ERROR;
   }
 
-  /*
-   * Return values:
-   *
-   *  0 - complete message received
-   *  1 - no message available right now
-   *  2 - pipe was closed cleanly
-   * -1 - actual error
-   */
+  IpcReadState *state = &ctx->read_states[(int)from];
 
-  /*
-   * Read MessageHeader.
-   */
-  size_t received = 0;
-  char *header_ptr = (char *)&msg->s_header;
+  for (;;) {
+    char *destination;
+    size_t remaining;
 
-  while (received < sizeof(MessageHeader)) {
-    ssize_t rc =
-        read(fd, header_ptr + received, sizeof(MessageHeader) - received);
+    if (!state->header_complete) {
+      destination = (char *)&state->message.s_header + state->received;
+      remaining = sizeof(MessageHeader) - state->received;
+    } else {
+      destination = state->message.s_payload + state->received;
+      remaining = state->expected - state->received;
+    }
+
+    ssize_t rc = read(fd, destination, remaining);
 
     if (rc > 0) {
-      received += (size_t)rc;
-      continue;
+      state->received += (size_t)rc;
+
+      if (state->received <
+          (state->header_complete ? state->expected : sizeof(MessageHeader))) {
+        continue;
+      }
+
+      if (!state->header_complete) {
+        if (state->message.s_header.s_magic != MESSAGE_MAGIC) {
+          errno = EINVAL;
+          return RECEIVE_ATTEMPT_ERROR;
+        }
+
+        if (state->message.s_header.s_payload_len > MAX_PAYLOAD_LEN) {
+          errno = EMSGSIZE;
+          return RECEIVE_ATTEMPT_ERROR;
+        }
+
+        state->header_complete = 1;
+        state->received = 0;
+        state->expected = state->message.s_header.s_payload_len;
+
+        if (state->expected != 0) {
+          continue;
+        }
+      }
+
+      *msg = state->message;
+      memset(state, 0, sizeof(*state));
+      return RECEIVE_ATTEMPT_COMPLETE;
     }
 
     if (rc == 0) {
-      /*
-       * EOF before we started reading a new message:
-       * writer closed its end normally.
-       */
-      if (received == 0) {
-        return 2;
-      }
+      if (state->received == 0 && !state->header_complete)
+        return RECEIVE_ATTEMPT_CLOSED;
 
-      /*
-       * EOF in the middle of a message.
-       */
       errno = EPIPE;
-      return -1;
+      return RECEIVE_ATTEMPT_ERROR;
     }
 
-    /*
-     * rc == -1
-     */
-
-    if (errno == EINTR) {
+    if (errno == EINTR)
       continue;
-    }
 
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      /*
-       * Nothing from this process right now.
-       */
-      if (received == 0) {
-        return 1;
-      }
+    if (errno == EAGAIN || errno == EWOULDBLOCK)
+      return RECEIVE_ATTEMPT_EMPTY;
 
-      /*
-       * We have already consumed part of the header.
-       * We cannot return now, otherwise the next call
-       * would interpret the remaining bytes as a new header.
-       */
-      continue;
-    }
-
-    return -1;
+    return RECEIVE_ATTEMPT_ERROR;
   }
-
-  /*
-   * Validate header.
-   */
-  if (msg->s_header.s_magic != MESSAGE_MAGIC) {
-    errno = EINVAL;
-    return -1;
-  }
-
-  if (msg->s_header.s_payload_len > MAX_PAYLOAD_LEN) {
-    errno = EMSGSIZE;
-    return -1;
-  }
-
-  /*
-   * Empty payload means the message is already complete.
-   */
-  if (msg->s_header.s_payload_len == 0) {
-    return 0;
-  }
-
-  /*
-   * Read payload.
-   */
-  received = 0;
-
-  while (received < msg->s_header.s_payload_len) {
-    ssize_t rc = read(fd, msg->s_payload + received,
-                      msg->s_header.s_payload_len - received);
-
-    if (rc > 0) {
-      received += (size_t)rc;
-      continue;
-    }
-
-    if (rc == 0) {
-      /*
-       * Header was received, but writer closed the pipe
-       * before the complete payload arrived.
-       */
-      errno = EPIPE;
-      return -1;
-    }
-
-    /*
-     * rc == -1
-     */
-
-    if (errno == EINTR) {
-      continue;
-    }
-
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      /*
-       * Part of this message has already been consumed,
-       * so keep waiting for the rest.
-       */
-      continue;
-    }
-
-    return -1;
-  }
-
-  return 0;
 }
 
 int receive(void *self, local_id from, Message *msg) {
@@ -335,13 +279,13 @@ int receive(void *self, local_id from, Message *msg) {
   }
 
   for (;;) {
-    int rc = try_receive(ctx, from, msg);
+    ReceiveAttemptResult rc = try_receive(ctx, from, msg);
 
-    if (rc == 0) {
+    if (rc == RECEIVE_ATTEMPT_COMPLETE) {
       return 0;
     }
 
-    if (rc == 1) {
+    if (rc == RECEIVE_ATTEMPT_EMPTY) {
       /*
        * Nothing available from this process right now.
        * Keep trying.
@@ -349,7 +293,7 @@ int receive(void *self, local_id from, Message *msg) {
       continue;
     }
 
-    if (rc == 2) {
+    if (rc == RECEIVE_ATTEMPT_CLOSED) {
       /*
        * Sender closed the pipe before sending
        * the message we are waiting for.
@@ -358,9 +302,7 @@ int receive(void *self, local_id from, Message *msg) {
       return 1;
     }
 
-    /*
-     * rc == -1
-     */
+    /* RECEIVE_ATTEMPT_ERROR. */
     return 1;
   }
 }
@@ -374,6 +316,8 @@ int receive_any(void *self, Message *msg) {
   }
 
   for (;;) {
+    int open_channels = 0;
+
     for (int from = 0; from < ctx->process_count; ++from) {
 
       if (from == ctx->self_id)
@@ -387,19 +331,32 @@ int receive_any(void *self, Message *msg) {
       if (channel->read_fd < 0)
         continue;
 
-      int rc = try_receive(ctx, (local_id)from, msg);
+      ++open_channels;
 
-      if (rc == 0)
+      ReceiveAttemptResult rc = try_receive(ctx, (local_id)from, msg);
+
+      if (rc == RECEIVE_ATTEMPT_COMPLETE)
         return 0;
 
-      if (rc < 0)
+      if (rc == RECEIVE_ATTEMPT_ERROR)
         return 1;
 
+      if (rc == RECEIVE_ATTEMPT_CLOSED) {
+        close(channel->read_fd);
+        channel->read_fd = -1;
+        continue;
+      }
+
       /*
-       * rc == 1:
+       * RECEIVE_ATTEMPT_EMPTY:
        * No message is currently available from this process.
        * Try the next one.
        */
+    }
+
+    if (open_channels == 0) {
+      errno = EPIPE;
+      return 1;
     }
   }
 }

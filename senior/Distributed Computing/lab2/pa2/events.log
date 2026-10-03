@@ -1,8 +1,8 @@
-0: process 1 (pid 114074, parent 114073) has STARTED with balance $ 1
-0: process 2 (pid 114075, parent 114073) has STARTED with balance $ 2
-0: process 3 (pid 114076, parent 114073) has STARTED with balance $ 3
-0: process 4 (pid 114077, parent 114073) has STARTED with balance $ 4
-0: process 5 (pid 114078, parent 114073) has STARTED with balance $ 5
+0: process 1 (pid 34368, parent 34367) has STARTED with balance $ 1
+0: process 2 (pid 34369, parent 34367) has STARTED with balance $ 2
+0: process 3 (pid 34370, parent 34367) has STARTED with balance $ 3
+0: process 4 (pid 34371, parent 34367) has STARTED with balance $ 4
+0: process 5 (pid 34372, parent 34367) has STARTED with balance $ 5
 1: process 1 received all STARTED messages
 1: process 2 received all STARTED messages
 1: process 3 received all STARTED messages

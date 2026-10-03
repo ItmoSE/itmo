@@ -240,7 +240,7 @@ static int parent_receive_all(IpcContext *ctx, MessageType expected_type) {
       return 1;
     }
 
-    if (message.s_header.s_type != expected_type) {
+    if (message.s_header.s_type != (int16_t)expected_type) {
       return 1;
     }
   }
@@ -320,6 +320,8 @@ static int child_work(int idx, int N, element pipes[N][N], int events_fd,
                       balance_t balance) {
 
   IpcContext ctx;
+
+  memset(&ctx, 0, sizeof(ctx));
 
   ctx.self_id = (local_id)idx;
   ctx.process_count = N;

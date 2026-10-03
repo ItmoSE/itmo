@@ -18,6 +18,7 @@ static int parent_collect_results(IpcContext *ctx, AllHistory *all_history) {
 
   int done_count = 0;
   int history_count = 0;
+  int history_received[MAX_PROCESS_ID + 1] = {0};
 
   while (done_count < child_count || history_count < child_count) {
     Message msg;
@@ -57,6 +58,10 @@ static int parent_collect_results(IpcContext *ctx, AllHistory *all_history) {
         return 1;
       }
 
+      if (history_received[(int)history.s_id]) {
+        return 1;
+      }
+
       /*
        * Check that payload contains exactly as many
        * BalanceState entries as s_history_len says.
@@ -76,6 +81,7 @@ static int parent_collect_results(IpcContext *ctx, AllHistory *all_history) {
        * ...
        */
       all_history->s_history[history.s_id - 1] = history;
+      history_received[(int)history.s_id] = 1;
 
       history_count++;
       continue;
@@ -88,6 +94,37 @@ static int parent_collect_results(IpcContext *ctx, AllHistory *all_history) {
   }
 
   all_history->s_history_len = (uint8_t)child_count;
+
+  return 0;
+}
+
+static int normalize_histories(AllHistory *all_history) {
+  uint8_t max_len = 0;
+
+  for (uint8_t i = 0; i < all_history->s_history_len; ++i) {
+    BalanceHistory *history = &all_history->s_history[i];
+
+    if (history->s_history_len == 0) {
+      return 1;
+    }
+
+    if (history->s_history_len > max_len) {
+      max_len = history->s_history_len;
+    }
+  }
+
+  for (uint8_t i = 0; i < all_history->s_history_len; ++i) {
+    BalanceHistory *history = &all_history->s_history[i];
+    balance_t balance = history->s_history[history->s_history_len - 1].s_balance;
+
+    for (uint8_t t = history->s_history_len; t < max_len; ++t) {
+      history->s_history[t].s_balance = balance;
+      history->s_history[t].s_time = t;
+      history->s_history[t].s_balance_pending_in = 0;
+    }
+
+    history->s_history_len = max_len;
+  }
 
   return 0;
 }
@@ -157,10 +194,10 @@ int main(int argc, char *argv[]) {
 
   long parsed = strtol(argv[2], &end, 10);
 
-  if (errno == ERANGE || end == argv[2] || *end != '\0' || parsed < 1 ||
+  if (errno == ERANGE || end == argv[2] || *end != '\0' || parsed < 2 ||
       parsed > 10) {
 
-    fprintf(stderr, "usage: %s -p <number from 1 to 10>\n", argv[0]);
+    fprintf(stderr, "usage: %s -p <number from 2 to 10>\n", argv[0]);
     return 1;
   }
   if (argc != parsed + 3) {
@@ -174,7 +211,8 @@ int main(int argc, char *argv[]) {
 
     long balance = strtol(argv[i + 3], &end, 10);
 
-    if (errno == ERANGE || end == argv[i + 3] || *end != '\0') {
+    if (errno == ERANGE || end == argv[i + 3] || *end != '\0' || balance < 1 ||
+        balance > 99) {
       fprintf(stderr, "invalid balance: %s\n", argv[i + 3]);
       return 1;
     }
@@ -363,6 +401,8 @@ int main(int argc, char *argv[]) {
 
   IpcContext parent_ctx;
 
+  memset(&parent_ctx, 0, sizeof(parent_ctx));
+
   parent_ctx.self_id = PARENT_ID;
   parent_ctx.process_count = N;
   parent_ctx.pipes = &pipes[0][0];
@@ -423,6 +463,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (normalize_histories(&all_history) != 0) {
+    close(events_fd);
+    return 1;
+  }
+
   /*
    * ============================================================
    * PRINT BALANCE HISTORY
@@ -438,8 +483,15 @@ int main(int argc, char *argv[]) {
    */
 
   for (int i = 0; i < X; ++i) {
-    if (waitpid(children[i], NULL, 0) == -1) {
+    int status;
+
+    if (waitpid(children[i], &status, 0) == -1) {
       perror("waitpid");
+      close(events_fd);
+      return 1;
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
       close(events_fd);
       return 1;
     }

@@ -5,10 +5,19 @@
 
 #include "ipc.h"
 
+#include <stddef.h>
+
 typedef struct {
   int read_fd;
   int write_fd;
 } element;
+
+typedef struct {
+  Message message;
+  size_t received;
+  size_t expected;
+  int header_complete;
+} IpcReadState;
 
 typedef struct {
   local_id self_id;
@@ -22,6 +31,7 @@ typedef struct {
    * pipes[from][to] is stored linearly in memory.
    */
   element *pipes;
+  IpcReadState read_states[MAX_PROCESS_ID + 1];
 } IpcContext;
 
 #endif
