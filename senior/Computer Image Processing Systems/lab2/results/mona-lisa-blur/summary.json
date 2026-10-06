@@ -1,0 +1,41 @@
+{
+  "video": "test-videos/mona-lisa-blur.avi",
+  "frames": 558,
+  "expected_frames": 558,
+  "complete": true,
+  "width": 640,
+  "height": 360,
+  "source_fps": 29.97,
+  "roi": [
+    0,
+    0,
+    640,
+    360
+  ],
+  "reference_features": 1186,
+  "detected_frames": 376,
+  "detection_rate": 0.6738351254480287,
+  "median_reprojection_error_px": 0.9111961722373962,
+  "mean_processing_ms": 67.07951865054608,
+  "processing_fps": 14.907680020924825,
+  "elapsed_s": 38.471639622999646,
+  "parameters": {
+    "ratio": 0.75,
+    "min_inliers": 8,
+    "min_inlier_ratio": 0.45,
+    "ransac_threshold": 3.0,
+    "features": 2500
+  },
+  "samples": [
+    "frame_00000.jpg",
+    "frame_00139.jpg",
+    "frame_00279.jpg",
+    "frame_00418.jpg",
+    "frame_00557.jpg"
+  ],
+  "versions": {
+    "python": "3.14.7",
+    "opencv": "5.0.0",
+    "numpy": "2.5.3"
+  }
+}

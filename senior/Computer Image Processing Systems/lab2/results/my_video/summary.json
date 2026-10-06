@@ -1,0 +1,41 @@
+{
+  "video": "my_video.mp4",
+  "frames": 311,
+  "expected_frames": 311,
+  "complete": true,
+  "width": 1080,
+  "height": 1920,
+  "source_fps": 29.973078842368803,
+  "roi": [
+    0,
+    0,
+    1080,
+    1920
+  ],
+  "reference_features": 5081,
+  "detected_frames": 311,
+  "detection_rate": 1.0,
+  "median_reprojection_error_px": 0.6448066234588623,
+  "mean_processing_ms": 269.17408082937976,
+  "processing_fps": 3.715067947548285,
+  "elapsed_s": 90.429072455001,
+  "parameters": {
+    "ratio": 0.75,
+    "min_inliers": 8,
+    "min_inlier_ratio": 0.45,
+    "ransac_threshold": 3.0,
+    "features": 2500
+  },
+  "samples": [
+    "frame_00000.jpg",
+    "frame_00077.jpg",
+    "frame_00155.jpg",
+    "frame_00233.jpg",
+    "frame_00310.jpg"
+  ],
+  "versions": {
+    "python": "3.14.7",
+    "opencv": "5.0.0",
+    "numpy": "2.5.3"
+  }
+}
