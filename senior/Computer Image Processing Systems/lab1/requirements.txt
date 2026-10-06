@@ -1,0 +1,4 @@
+numpy==2.5.3
+opencv-python==4.13.0.92
+matplotlib==3.10.7
+pytest==9.1.1

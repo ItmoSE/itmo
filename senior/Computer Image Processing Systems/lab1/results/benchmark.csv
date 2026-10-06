@@ -1,0 +1,3 @@
+image,size,pixels,native_ms,opencv_ms,speedup
+pic1.jpg,3497x5245,18341765,25388.586,29.458,861.9
+pic2.jpg,4773x7051,33654423,42244.441,66.722,633.1
