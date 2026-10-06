@@ -115,24 +115,47 @@ static int child_main(local_id id, int count, element pipes[count][count],
 
 static int parse_arguments(int argc, char *argv[], int *children,
                            int *use_mutex) {
-  char *end;
-  long value;
+  int process_count_seen = 0;
+  int mutex_seen = 0;
 
-  if ((argc != 3 && argc != 4) || strcmp(argv[1], "-p") != 0)
+  if (argc != 3 && argc != 4)
     return 1;
 
-  errno = 0;
-  end = NULL;
-  value = strtol(argv[2], &end, 10);
-  if (errno == ERANGE || end == argv[2] || *end != '\0' || value < 1 ||
-      value > MAX_PROCESS_ID)
+  for (int index = 1; index < argc; ++index) {
+    if (strcmp(argv[index], "--mutexl") == 0) {
+      if (mutex_seen)
+        return 1;
+      mutex_seen = 1;
+      continue;
+    }
+
+    if (strcmp(argv[index], "-p") == 0) {
+      char *end;
+      long value;
+
+      if (process_count_seen || index + 1 >= argc)
+        return 1;
+
+      errno = 0;
+      end = NULL;
+      value = strtol(argv[++index], &end, 10);
+      if (errno == ERANGE || end == argv[index] || *end != '\0' || value < 1 ||
+          value > MAX_PROCESS_ID)
+        return 1;
+
+      *children = (int)value;
+      process_count_seen = 1;
+      continue;
+    }
+
+    return 1;
+  }
+
+  if (!process_count_seen || (argc == 4 && !mutex_seen) ||
+      (argc == 3 && mutex_seen))
     return 1;
 
-  if (argc == 4 && strcmp(argv[3], "--mutexl") != 0)
-    return 1;
-
-  *children = (int)value;
-  *use_mutex = argc == 4;
+  *use_mutex = mutex_seen;
   return 0;
 }
 
