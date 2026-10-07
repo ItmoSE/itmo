@@ -1,0 +1,37 @@
+# Учебный стенд DVWA для лабораторной работы по OWASP ZAP.
+# Основа: https://github.com/digininja/DVWA/blob/master/compose.yml
+# Настройки low и DISABLE_AUTHENTICATION позволяют Quick Scan исследовать
+# учебные страницы без отдельной настройки входа в ZAP.
+name: infosec-owasp-zap
+
+services:
+  dvwa:
+    image: ghcr.io/digininja/dvwa:latest
+    environment:
+      DB_SERVER: db
+      DEFAULT_SECURITY_LEVEL: low
+      DISABLE_AUTHENTICATION: "true"
+    depends_on:
+      - db
+    ports:
+      - 127.0.0.1:4280:80
+    networks:
+      - lab
+
+  db:
+    image: docker.io/library/mariadb:10
+    environment:
+      MYSQL_ROOT_PASSWORD: dvwa
+      MYSQL_DATABASE: dvwa
+      MYSQL_USER: dvwa
+      MYSQL_PASSWORD: p@ssw0rd
+    volumes:
+      - dvwa-db:/var/lib/mysql
+    networks:
+      - lab
+
+volumes:
+  dvwa-db:
+
+networks:
+  lab:

